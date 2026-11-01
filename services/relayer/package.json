@@ -1,0 +1,16 @@
+{
+  "name": "@pursestrings/relayer",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Untrusted broadcaster for transactions a Pursestrings account has signed",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0"
+  }
+}
