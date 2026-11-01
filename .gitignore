@@ -15,3 +15,5 @@ dist/
 .next/
 coverage/
 *.tsbuildinfo
+
+.devnet/

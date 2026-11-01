@@ -4,6 +4,8 @@ use near_sdk::{AccountId, NearToken, env, near, require};
 
 /// Stands in for every derived Ed25519 key, so signatures verify like real MPC ones.
 const EDDSA_SECRET: [u8; 32] = [7; 32];
+/// Stands in for every derived secp256k1 key once `use_real_ecdsa` is on.
+const ECDSA_SECRET: [u8; 32] = [9; 32];
 
 /// `r` and `s` both start with zero bytes, so callers must encode them minimally.
 const BIG_R: &str = "020033333333333333333333333333333333333333333333333333333333333333";
@@ -57,6 +59,8 @@ pub struct TestMpc {
     /// Transaction ids `verify_foreign_transaction` treats as finalized and successful.
     final_txs: Vec<String>,
     verify_requests: Vec<String>,
+    /// Off by default: the fixed signature above exercises leading-zero handling.
+    real_ecdsa: bool,
 }
 
 #[near]
@@ -76,6 +80,20 @@ impl TestMpc {
             let bytes = hex_decode(&payload);
             let sig = SigningKey::from_bytes(&EDDSA_SECRET).sign(&bytes);
             json!({ "scheme": "Ed25519", "signature": sig.to_bytes().to_vec() })
+        } else if self.real_ecdsa {
+            let hash: [u8; 32] = hex_decode(&payload).try_into().expect("32-byte hash");
+            let key = k256::ecdsa::SigningKey::from_bytes(&ECDSA_SECRET.into()).unwrap();
+            let (sig, recid) = key.sign_prehash_recoverable(&hash).expect("sign");
+            let (r, s) = sig.split_bytes();
+            near_sdk::serde_json::to_value(EcdsaResponse {
+                scheme: "Secp256k1".into(),
+                big_r: AffinePoint {
+                    affine_point: format!("{:02x}{}", 2 + u8::from(recid.is_y_odd()), hex(&r)),
+                },
+                s: Scalar { scalar: hex(&s) },
+                recovery_id: recid.to_byte(),
+            })
+            .unwrap()
         } else {
             near_sdk::serde_json::to_value(EcdsaResponse {
                 scheme: "Secp256k1".into(),
@@ -103,12 +121,28 @@ impl TestMpc {
         domain_id: Option<u64>,
     ) -> String {
         let _ = (path, predecessor);
-        require!(domain_id == Some(1), "only the ed25519 domain is mocked");
-        let pk = SigningKey::from_bytes(&EDDSA_SECRET).verifying_key();
-        format!(
-            "ed25519:{}",
-            near_sdk::bs58::encode(pk.as_bytes()).into_string()
-        )
+        match domain_id {
+            Some(1) => {
+                let pk = SigningKey::from_bytes(&EDDSA_SECRET).verifying_key();
+                format!(
+                    "ed25519:{}",
+                    near_sdk::bs58::encode(pk.as_bytes()).into_string()
+                )
+            }
+            Some(0) | None => {
+                let key = k256::ecdsa::SigningKey::from_bytes(&ECDSA_SECRET.into()).unwrap();
+                let point = key.verifying_key().to_encoded_point(false);
+                format!(
+                    "secp256k1:{}",
+                    near_sdk::bs58::encode(&point.as_bytes()[1..]).into_string()
+                )
+            }
+            Some(d) => env::panic_str(&format!("domain {d} is not mocked")),
+        }
+    }
+
+    pub fn use_real_ecdsa(&mut self) {
+        self.real_ecdsa = true;
     }
 
     /// Succeeds only for ids marked final; anything else fails, as a real request times out.
@@ -144,6 +178,10 @@ impl TestMpc {
     pub fn seen(&self) -> Vec<Seen> {
         self.seen.clone()
     }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn hex_decode(hex: &str) -> Vec<u8> {

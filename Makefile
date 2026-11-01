@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 CONTRACTS := pursestrings factory
 
-.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo redteam
+.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo demo-keep redteam
 
 all: lint test
 
@@ -34,7 +34,10 @@ fmt:
 	pnpm format
 
 demo:
-	@echo "make demo: not implemented yet (demo agent lands in Phase 8)" >&2; exit 1
+	@scripts/demo.sh
+
+demo-keep:
+	@scripts/demo.sh --keep
 
 redteam:
-	@echo "make redteam: not implemented yet (red-team suite lands in Phase 9)" >&2; exit 1
+	@echo "make redteam: not implemented yet" >&2; exit 1

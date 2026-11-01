@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contracts/*"]
+members = ["contracts/*", "scripts/devnet"]
 
 [workspace.package]
 edition = "2024"

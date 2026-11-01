@@ -1,0 +1,17 @@
+{
+  "name": "@pursestrings/agent",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Demo procurement agent: pays on NEAR, on Base through Chain Signatures and through NEAR Intents, under one policy",
+  "type": "module",
+  "scripts": {
+    "demo": "node --experimental-strip-types --no-warnings src/demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/curves": "2.2.0",
+    "@pursestrings/sdk": "workspace:*",
+    "near-api-js": "7.4.0"
+  }
+}

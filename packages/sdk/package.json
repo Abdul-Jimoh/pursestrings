@@ -1,0 +1,20 @@
+{
+  "name": "@pursestrings/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "TypeScript client for a Pursestrings account: agent requests, owner controls, views",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/curves": "2.2.0",
+    "@noble/hashes": "^2.4.0",
+    "near-api-js": "7.4.0"
+  }
+}
