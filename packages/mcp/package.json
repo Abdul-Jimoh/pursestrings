@@ -1,0 +1,21 @@
+{
+  "name": "@pursestrings/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "MCP server that gives an AI agent request_spend, budget_status and explain_denial, and nothing else",
+  "type": "module",
+  "bin": {
+    "pursestrings-mcp": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types --no-warnings src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@pursestrings/sdk": "workspace:*",
+    "zod": "4.6.7"
+  }
+}
