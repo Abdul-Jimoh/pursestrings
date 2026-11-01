@@ -1,6 +1,8 @@
 use near_sdk::json_types::U128;
 use near_sdk::serde::Serialize;
-use near_sdk::{Gas, NearToken, Promise, PromiseError, env, near, require};
+use near_sdk::{
+    Gas, NearToken, Promise, PromiseError, assert_one_yocto, env, is_promise_success, near, require,
+};
 use omni_transaction::evm::EVMTransaction;
 use omni_transaction::evm::types::Signature;
 
@@ -18,6 +20,26 @@ const MPC_SIGN_GAS: Gas = Gas::from_tgas(50);
 const EVM_CALLBACK_GAS: Gas = Gas::from_tgas(20);
 const ERC20_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb];
 const CANCEL_GAS_LIMIT: u64 = 21_000;
+/// The MPC domain for foreign-transaction verification (`state` on v1.signer and
+/// v1.signer-prod.testnet, Nov 2026).
+const FOREIGN_TX_DOMAIN: u64 = 3;
+const VERIFY_GAS: Gas = Gas::from_tgas(50);
+const VERIFY_CALLBACK_GAS: Gas = Gas::from_tgas(15);
+
+/// The MPC network's name for an EVM chain. Mainnet MPC checks mainnets and testnet MPC checks
+/// testnets under the same names; a transaction hash commits to its chain id, so mapping both
+/// ids to one name can't confuse the two.
+const fn mpc_chain(chain_id: u64) -> Option<&'static str> {
+    match chain_id {
+        1 | 11_155_111 => Some("Ethereum"),
+        8453 | 84_532 => Some("Base"),
+        42_161 | 421_614 => Some("Arbitrum"),
+        137 | 80_002 => Some("Polygon"),
+        56 | 97 => Some("Bnb"),
+        43_114 | 43_113 => Some("Avalanche"),
+        _ => None,
+    }
+}
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -164,24 +186,43 @@ impl Pursestrings {
             ),
             "not an open evm request"
         );
-        let status = if replaced {
+        if replaced {
             require!(
                 req.evm.as_ref().is_some_and(|t| t.cancel_tx.is_some()),
                 "sign a cancel first"
             );
-            RequestStatus::Replaced
-        } else {
-            RequestStatus::Done
-        };
-        req.status = status;
-        let reservations = if replaced {
-            std::mem::take(&mut req.reservations)
-        } else {
-            Vec::new()
-        };
-        self.release(&reservations);
-        self.evm_open.remove(&req_id);
-        Event::RequestStatus { req_id, status }.emit();
+        }
+        self.finish_evm(req_id, replaced);
+    }
+
+    /// Anyone can ask the MPC network to confirm that the signed transaction is finalized and
+    /// succeeded; the spend is then done without trusting the owner or the relayer. Attach 1
+    /// yoctoNEAR for the MPC deposit. Calling before finality just times out.
+    #[payable]
+    pub fn confirm_evm(&mut self, req_id: u64) -> Promise {
+        self.verify_evm(req_id, false)
+    }
+
+    /// Like `confirm_evm`, for the same-nonce cancel: once the cancel is finalized the original
+    /// can never be included, so the reservation is released.
+    #[payable]
+    pub fn release_evm(&mut self, req_id: u64) -> Promise {
+        self.verify_evm(req_id, true)
+    }
+
+    #[private]
+    pub fn on_evm_verified(&mut self, req_id: u64, replaced: bool) -> bool {
+        let open = self.requests.get(&req_id).is_some_and(|r| {
+            matches!(
+                r.status,
+                RequestStatus::Signed | RequestStatus::SigningFailed
+            )
+        });
+        if !is_promise_success() || !open {
+            return false;
+        }
+        self.finish_evm(req_id, replaced);
+        true
     }
 
     #[private]
@@ -232,6 +273,60 @@ impl Pursestrings {
 }
 
 impl Pursestrings {
+    fn finish_evm(&mut self, req_id: u64, replaced: bool) {
+        let req = self.requests.get_mut(&req_id).expect("unknown request");
+        let status = if replaced {
+            RequestStatus::Replaced
+        } else {
+            RequestStatus::Done
+        };
+        req.status = status;
+        let reservations = if replaced {
+            std::mem::take(&mut req.reservations)
+        } else {
+            Vec::new()
+        };
+        self.release(&reservations);
+        self.evm_open.remove(&req_id);
+        Event::RequestStatus { req_id, status }.emit();
+    }
+
+    fn verify_evm(&self, req_id: u64, replaced: bool) -> Promise {
+        assert_one_yocto();
+        let req = self.requests.get(&req_id).expect("unknown request");
+        require!(
+            matches!(
+                req.status,
+                RequestStatus::Signed | RequestStatus::SigningFailed
+            ),
+            "not an open evm request"
+        );
+        let tx = req.evm.as_ref().expect("evm request");
+        let raw = if replaced { &tx.cancel_tx } else { &tx.raw_tx };
+        let raw = raw.as_deref().expect("no signed transaction to verify");
+        let Asset::Evm { chain_id, .. } = req.spend.asset else {
+            env::panic_str("not an evm spend")
+        };
+        let chain = mpc_chain(chain_id).expect("the MPC network can't verify this chain");
+        let bytes = hex_decode(raw.trim_start_matches("0x")).expect("stored tx is hex");
+        let tx_id = hex_encode(&env::keccak256_array(&bytes));
+        let args = format!(
+            r#"{{"request":{{"request":{{"{chain}":{{"tx_id":"{tx_id}","extractors":["BlockHash"],"finality":"Finalized"}}}},"domain_id":{FOREIGN_TX_DOMAIN},"payload_version":1}}}}"#
+        );
+        Promise::new(self.mpc.clone())
+            .function_call(
+                "verify_foreign_transaction",
+                args.into_bytes(),
+                NearToken::from_yoctonear(1),
+                VERIFY_GAS,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(VERIFY_CALLBACK_GAS)
+                    .on_evm_verified(req_id, replaced),
+            )
+    }
+
     /// Assigns the next nonce for the chain (never reused, see `SigningFailed`) and asks the MPC
     /// signer for a signature over the transaction built from the stored request.
     pub(crate) fn start_evm(&mut self, req_id: u64, spend: &SpendRequest) -> Promise {

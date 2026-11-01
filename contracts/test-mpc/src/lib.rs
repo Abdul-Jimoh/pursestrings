@@ -1,3 +1,4 @@
+use near_sdk::serde_json::{Value, json};
 use near_sdk::{AccountId, NearToken, env, near, require};
 
 /// `r` and `s` both start with zero bytes, so callers must encode them minimally.
@@ -49,6 +50,9 @@ pub struct EcdsaResponse {
 pub struct TestMpc {
     seen: Vec<Seen>,
     fail: bool,
+    /// Transaction ids `verify_foreign_transaction` treats as finalized and successful.
+    final_txs: Vec<String>,
+    verify_requests: Vec<String>,
 }
 
 #[near]
@@ -77,6 +81,32 @@ impl TestMpc {
             s: Scalar { scalar: S.into() },
             recovery_id: 1,
         }
+    }
+
+    /// Succeeds only for ids marked final; anything else fails, as a real request times out.
+    #[payable]
+    pub fn verify_foreign_transaction(&mut self, request: Value) -> Value {
+        require!(
+            env::attached_deposit() >= NearToken::from_yoctonear(1),
+            "deposit required"
+        );
+        self.verify_requests.push(request.to_string());
+        let tx_id = request["request"]
+            .as_object()
+            .and_then(|chains| chains.values().next())
+            .and_then(|r| r["tx_id"].as_str())
+            .unwrap_or_default()
+            .to_string();
+        require!(self.final_txs.contains(&tx_id), "Request has timed out.");
+        json!({ "payload_hash": "00".repeat(32), "signature": {} })
+    }
+
+    pub fn mark_final(&mut self, tx_id: String) {
+        self.final_txs.push(tx_id);
+    }
+
+    pub fn verify_requests(&self) -> Vec<String> {
+        self.verify_requests.clone()
     }
 
     pub fn set_fail(&mut self, fail: bool) {

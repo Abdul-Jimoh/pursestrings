@@ -402,3 +402,106 @@ async fn evm_budget_is_held_until_a_cancel_is_confirmed() -> TestResult {
     assert!(open.is_empty());
     Ok(())
 }
+
+fn tx_id(raw: &str) -> String {
+    to_hex(&Keccak256::digest(hex(raw)))
+}
+
+#[tokio::test]
+async fn evm_confirm_and_release_need_mpc_verification_not_trust() -> TestResult {
+    let env = Env::new(evm_policy).await?;
+    let mpc = near_api::Contract(env.mpc.clone());
+    let mark_final = |id: String| {
+        mpc.call_function("mark_final", json!({ "tx_id": id }))
+            .transaction()
+            .with_signer(env.owner.clone(), env.root.clone())
+            .send_to(&env.net)
+    };
+    let anyone = |method: &'static str, req_id: u64, deposit: u128| {
+        env.call_as(&env.attacker, method, json!({ "req_id": req_id }), deposit)
+    };
+
+    let a = spend_id(&env, 40_000_000, "confirm-me").await?;
+    let raw_a = request(&env, a).await?["evm"]["raw_tx"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        refused(anyone("confirm_evm", a, 0).await),
+        "needs the 1 yocto MPC deposit"
+    );
+    assert!(
+        !anyone("confirm_evm", a, 1)
+            .await?
+            .assert_success()
+            .json::<bool>()?,
+        "MPC did not verify"
+    );
+    assert_eq!(
+        request(&env, a).await?["status"],
+        "Signed",
+        "not final yet: nothing changes"
+    );
+
+    mark_final(tx_id(&raw_a)).await?.assert_success();
+    anyone("confirm_evm", a, 1).await?.assert_success();
+    assert_eq!(request(&env, a).await?["status"], "Done");
+    assert_eq!(
+        used(&env, usdc_asset()).await?,
+        40_000_000,
+        "a confirmed spend keeps its budget"
+    );
+    assert!(
+        refused(anyone("confirm_evm", a, 1).await),
+        "already resolved"
+    );
+
+    let verify: Vec<String> = mpc
+        .call_function("verify_requests", ())
+        .read_only()
+        .fetch_from(&env.net)
+        .await?
+        .data;
+    let sent: Value = near_sdk::serde_json::from_str(verify.last().unwrap())?;
+    assert_eq!(
+        sent,
+        json!({
+            "request": { "Base": { "tx_id": tx_id(&raw_a), "extractors": ["BlockHash"], "finality": "Finalized" } },
+            "domain_id": 3,
+            "payload_version": 1
+        })
+    );
+
+    let b = spend_id(&env, 10_000_000, "release-me").await?;
+    assert!(
+        refused(anyone("release_evm", b, 1).await),
+        "no cancel signed yet"
+    );
+    env.owner_call("cancel_evm", json!({ "req_id": b }))
+        .await?
+        .assert_success();
+    let cancel_b = request(&env, b).await?["evm"]["cancel_tx"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        !anyone("release_evm", b, 1)
+            .await?
+            .assert_success()
+            .json::<bool>()?,
+        "MPC did not verify"
+    );
+    assert_eq!(
+        used(&env, usdc_asset()).await?,
+        50_000_000,
+        "unconfirmed cancel releases nothing"
+    );
+
+    mark_final(tx_id(&cancel_b)).await?.assert_success();
+    anyone("release_evm", b, 1).await?.assert_success();
+    assert_eq!(request(&env, b).await?["status"], "Replaced");
+    assert_eq!(used(&env, usdc_asset()).await?, 40_000_000);
+    let open: Vec<Value> = env.view("evm_open", json!({})).await?;
+    assert!(open.is_empty());
+    Ok(())
+}
