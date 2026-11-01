@@ -2528,6 +2528,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "omni-transaction"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c29e3e53ff14dff841ad4bd83616ebb328009333fc90a6b8cb71450b351c665"
+dependencies = [
+ "hex",
+ "rlp",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2794,6 +2804,8 @@ dependencies = [
  "near-api",
  "near-sandbox",
  "near-sdk",
+ "omni-transaction",
+ "sha3 0.10.9",
  "testresult",
  "tokio",
 ]
@@ -2982,6 +2994,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "rlp"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa24e92bb2a83198bb76d661a71df9f7076b8c420b8696e4d3d97d50d94479e3"
+dependencies = [
+ "bytes",
+ "rustc-hex",
 ]
 
 [[package]]
@@ -3673,6 +3695,13 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "test-mpc"
+version = "0.0.0"
+dependencies = [
+ "near-sdk",
 ]
 
 [[package]]

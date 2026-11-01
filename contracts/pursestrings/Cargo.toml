@@ -19,6 +19,7 @@ container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "-
 
 [dependencies]
 near-sdk.workspace = true
+omni-transaction = { version = "0.5", default-features = false, features = ["evm"] }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
@@ -27,6 +28,7 @@ near-api.workspace = true
 cargo-near-build.workspace = true
 tokio.workspace = true
 testresult.workspace = true
+sha3 = "0.10"
 
 [lints]
 workspace = true

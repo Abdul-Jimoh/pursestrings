@@ -32,6 +32,14 @@ pub enum Event {
     #[event_version("1.0.0")]
     AgentRevoked { public_key: PublicKey },
     #[event_version("1.0.0")]
+    SignedTx {
+        req_id: u64,
+        chain_id: u64,
+        nonce: u64,
+        raw_tx: String,
+        cancel: bool,
+    },
+    #[event_version("1.0.0")]
     Migrating {
         proposal_id: u64,
         code_hash: Base58CryptoHash,

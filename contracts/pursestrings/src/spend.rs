@@ -5,6 +5,7 @@ use near_sdk::{
 };
 
 use crate::events::Event;
+use crate::evm::max_gas_cost;
 use crate::policy::{Policy, meets_rate};
 use crate::types::{
     Asset, Decision, DenyReason, Dest, IntentDest, Request, RequestStatus, Reservation,
@@ -43,13 +44,38 @@ fn idempotency_key(agent: &PublicKey, key: &str) -> [u8; 32] {
 /// NEAR the contract attaches itself when executing a spend of this asset.
 const fn fee_cost(asset: &Asset) -> u128 {
     match asset {
-        Asset::Nep141 { .. } => 1,
-        Asset::Near | Asset::Evm { .. } | Asset::Intents { .. } => 0,
+        // ft_transfer's 1 yocto, and the MPC `sign` deposit.
+        Asset::Nep141 { .. } | Asset::Evm { .. } => 1,
+        Asset::Near | Asset::Intents { .. } => 0,
     }
 }
 
 const fn executable(asset: &Asset) -> bool {
-    matches!(asset, Asset::Near | Asset::Nep141 { .. })
+    matches!(
+        asset,
+        Asset::Near | Asset::Nep141 { .. } | Asset::Evm { .. }
+    )
+}
+
+/// What a spend draws from each asset's windows. An EVM spend also reserves its worst-case
+/// gas fee from the chain's native token, so approved requests can't burn the address's gas.
+fn charges(p: &Policy, req: &SpendRequest) -> Result<Vec<(Asset, u128)>, DenyReason> {
+    let mut out = vec![(req.asset.clone(), req.amount.0)];
+    if let Asset::Evm { chain_id, .. } = req.asset {
+        let caps = p.gas_caps(chain_id).ok_or(DenyReason::GasCapsMissing)?;
+        let gas = max_gas_cost(caps).ok_or(DenyReason::GasCapsMissing)?;
+        let native = Asset::Evm {
+            chain_id,
+            token: None,
+        };
+        p.rule(&native).ok_or(DenyReason::NoGasBudget)?;
+        if native == req.asset {
+            out[0].1 = out[0].1.checked_add(gas).ok_or(DenyReason::NoGasBudget)?;
+        } else {
+            out.push((native, gas));
+        }
+    }
+    Ok(out)
 }
 
 fn check_dest(p: &Policy, req: &SpendRequest) -> Result<(), DenyReason> {
@@ -220,20 +246,20 @@ impl Pursestrings {
                 });
             }
         }
-        for w in &rule.windows {
-            let used = self.used(
-                &UsageKey::Spend {
-                    asset: req.asset.clone(),
+        for (asset, charge) in charges(p, req)? {
+            let charged_rule = p.rule(&asset).expect("checked in charges");
+            for w in &charged_rule.windows {
+                let key = UsageKey::Spend {
+                    asset: asset.clone(),
                     period_s: w.period_s,
-                },
-                w.period_s,
-                now,
-            );
-            if used.saturating_add(amount) > w.limit.0 {
-                return Err(DenyReason::OverWindow {
-                    period_s: w.period_s,
-                    remaining: U128(w.limit.0.saturating_sub(used)),
-                });
+                };
+                let used = self.used(&key, w.period_s, now);
+                if used.saturating_add(charge) > w.limit.0 {
+                    return Err(DenyReason::OverWindow {
+                        period_s: w.period_s,
+                        remaining: U128(w.limit.0.saturating_sub(used)),
+                    });
+                }
             }
         }
         let fee = fee_cost(&req.asset);
@@ -275,7 +301,7 @@ impl Pursestrings {
     }
 
     /// Velocity counts attempts, so it is never given back.
-    fn release(&mut self, reservations: &[Reservation]) {
+    pub(crate) fn release(&mut self, reservations: &[Reservation]) {
         for r in reservations {
             if matches!(r.key, UsageKey::Velocity { .. }) {
                 continue;
@@ -290,8 +316,6 @@ impl Pursestrings {
         let req_id = self.next_req_id;
         self.next_req_id += 1;
         let p = self.policy.clone();
-        let rule = p.rule(&req.asset).expect("checked in evaluate");
-        let amount = req.amount.0;
 
         let mut reservations = Vec::new();
         if let Some(v) = p.velocity {
@@ -304,12 +328,15 @@ impl Pursestrings {
                 1,
             ));
         }
-        for w in &rule.windows {
-            let key = UsageKey::Spend {
-                asset: req.asset.clone(),
-                period_s: w.period_s,
-            };
-            reservations.push(self.reserve(key, w.period_s, now, amount));
+        for (asset, charge) in charges(&p, req).expect("checked in evaluate") {
+            let rule = p.rule(&asset).expect("checked in charges");
+            for w in &rule.windows {
+                let key = UsageKey::Spend {
+                    asset: asset.clone(),
+                    period_s: w.period_s,
+                };
+                reservations.push(self.reserve(key, w.period_s, now, charge));
+            }
         }
         let fee = fee_cost(&req.asset);
         if fee > 0 {
@@ -345,6 +372,7 @@ impl Pursestrings {
                 created_at: now,
                 expires_at,
                 reservations,
+                evm: None,
             },
         );
         if status == RequestStatus::Executing {
@@ -362,7 +390,10 @@ impl Pursestrings {
         Event::RequestStatus { req_id, status }.emit();
     }
 
-    fn execute(&self, req_id: u64, spend: &SpendRequest) -> Promise {
+    fn execute(&mut self, req_id: u64, spend: &SpendRequest) -> Promise {
+        if let Asset::Evm { .. } = spend.asset {
+            return self.start_evm(req_id, spend);
+        }
         let Dest::Near { account } = &spend.dest else {
             env::panic_str("execution path unavailable")
         };
@@ -428,7 +459,11 @@ mod tests {
 
     fn contract(policy: Policy) -> Pursestrings {
         as_agent(1_000);
-        let mut c = Pursestrings::new("owner.near".parse().unwrap(), vec![]);
+        let mut c = Pursestrings::new(
+            "owner.near".parse().unwrap(),
+            "mpc.near".parse().unwrap(),
+            vec![],
+        );
         c.policy = policy;
         c.agents.insert(
             agent_pk(),
@@ -605,10 +640,85 @@ mod tests {
             chain_id: 1,
             address: to,
         });
-        let c = contract(p);
+        let c = contract(p.clone());
         assert_eq!(
             c.evaluate(&agent_pk(), &req(1), 1_000),
-            Err(DenyReason::PathUnavailable)
+            Err(DenyReason::GasCapsMissing)
+        );
+        p.evm_gas.push(crate::policy::ChainGas {
+            chain_id: 1,
+            caps: crate::policy::GasCaps {
+                max_gas_limit: 21_000,
+                max_fee_per_gas: U128(10),
+                max_priority_fee_per_gas: U128(1),
+            },
+        });
+        let c = contract(p.clone());
+        assert_eq!(c.evaluate(&agent_pk(), &req(1), 1_000), Ok(Route::Execute));
+    }
+
+    #[test]
+    fn evm_token_spend_needs_a_native_gas_budget() {
+        let mut p = base_policy();
+        let token = Asset::Evm {
+            chain_id: 1,
+            token: Some(EvmAddress([9; 20])),
+        };
+        let to = EvmAddress([7; 20]);
+        p.chains.push(1);
+        p.recipients.push(crate::types::Recipient::Evm {
+            chain_id: 1,
+            address: to,
+        });
+        p.evm_gas.push(crate::policy::ChainGas {
+            chain_id: 1,
+            caps: crate::policy::GasCaps {
+                max_gas_limit: 100_000,
+                max_fee_per_gas: U128(10),
+                max_priority_fee_per_gas: U128(1),
+            },
+        });
+        p.assets.push(AssetRule {
+            asset: token.clone(),
+            per_tx_cap: U128(1_000),
+            windows: vec![],
+            cosign_above: None,
+            risk_check_above: None,
+        });
+        let req = SpendRequest {
+            asset: token,
+            amount: U128(5),
+            dest: Dest::Evm { chain_id: 1, to },
+            purpose: String::new(),
+            idempotency_key: "t".into(),
+        };
+        let c = contract(p.clone());
+        assert_eq!(
+            c.evaluate(&agent_pk(), &req, 1_000),
+            Err(DenyReason::NoGasBudget)
+        );
+
+        p.assets.push(AssetRule {
+            asset: Asset::Evm {
+                chain_id: 1,
+                token: None,
+            },
+            per_tx_cap: U128(0),
+            windows: vec![crate::policy::WindowLimit {
+                period_s: 86_400,
+                limit: U128(999_999),
+            }],
+            cosign_above: None,
+            risk_check_above: None,
+        });
+        let c = contract(p);
+        assert_eq!(
+            c.evaluate(&agent_pk(), &req, 1_000),
+            Err(DenyReason::OverWindow {
+                period_s: 86_400,
+                remaining: U128(999_999)
+            }),
+            "100k gas at 10 wei per gas doesn't fit in the native window"
         );
     }
 

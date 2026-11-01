@@ -357,6 +357,15 @@ impl Policy {
         );
         require!(self.evm_gas.len() <= MAX_CHAINS, "too many gas caps");
         require!(
+            self.evm_gas.iter().all(|g| {
+                let c = &g.caps;
+                c.max_gas_limit >= 21_000
+                    && c.max_priority_fee_per_gas.0 <= c.max_fee_per_gas.0
+                    && crate::evm::max_gas_cost(c).is_some()
+            }),
+            "gas caps: limit >= 21000, priority fee <= max fee"
+        );
+        require!(
             all_unique(&self.evm_gas, |g| g.chain_id),
             "duplicate gas caps"
         );

@@ -1,12 +1,13 @@
 mod admin;
 mod events;
+mod evm;
 pub mod policy;
 mod ring;
 mod spend;
 pub mod types;
 
 use near_sdk::json_types::U128;
-use near_sdk::store::{IterableMap, LookupMap};
+use near_sdk::store::{IterableMap, IterableSet, LookupMap};
 use near_sdk::{
     AccountId, BorshStorageKey, PanicOnDefault, PublicKey, assert_one_yocto, env, near, require,
 };
@@ -24,6 +25,8 @@ enum StorageKey {
     Idempotency,
     Usage,
     Proposals,
+    EvmNonces,
+    EvmOpen,
 }
 
 #[near(serializers = [borsh, json])]
@@ -74,6 +77,12 @@ pub struct Pursestrings {
     last_admitted_at: Option<u64>,
     proposals: IterableMap<u64, Proposal>,
     next_proposal_id: u64,
+    /// The Chain Signatures contract (`v1.signer` on mainnet).
+    mpc: AccountId,
+    /// Next nonce per EVM chain for this account's derived address. Never decremented.
+    evm_nonces: LookupMap<u64, u64>,
+    /// EVM requests sent for signing and not yet resolved by the owner.
+    evm_open: IterableSet<u64>,
 }
 
 pub(crate) fn now_s() -> u64 {
@@ -85,7 +94,7 @@ impl Pursestrings {
     /// Builds the initial policy from the same ops `propose` takes, applied immediately to an
     /// empty policy. Every later loosening goes through the timelock.
     #[init]
-    pub fn new(owner: AccountId, ops: Vec<PolicyOp>) -> Self {
+    pub fn new(owner: AccountId, mpc: AccountId, ops: Vec<PolicyOp>) -> Self {
         // The agent key's predecessor is this account, so the owner must be someone else.
         require!(
             owner != env::current_account_id(),
@@ -115,6 +124,9 @@ impl Pursestrings {
             last_admitted_at: None,
             proposals: IterableMap::new(StorageKey::Proposals),
             next_proposal_id: 0,
+            mpc,
+            evm_nonces: LookupMap::new(StorageKey::EvmNonces),
+            evm_open: IterableSet::new(StorageKey::EvmOpen),
         }
     }
 
@@ -128,6 +140,22 @@ impl Pursestrings {
 
     pub fn owner(&self) -> AccountId {
         self.owner.clone()
+    }
+
+    pub fn mpc(&self) -> AccountId {
+        self.mpc.clone()
+    }
+
+    pub fn evm_nonce(&self, chain_id: u64) -> u64 {
+        self.evm_nonces.get(&chain_id).copied().unwrap_or(0)
+    }
+
+    /// What a relayer broadcasts: signed EVM requests the owner hasn't resolved yet.
+    pub fn evm_open(&self) -> Vec<(u64, Request)> {
+        self.evm_open
+            .iter()
+            .filter_map(|id| self.requests.get(id).map(|r| (*id, r.clone())))
+            .collect()
     }
 
     pub fn factory(&self) -> AccountId {

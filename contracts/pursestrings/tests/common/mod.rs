@@ -55,6 +55,7 @@ pub async fn protocol_version(sandbox: &Sandbox) -> TestResult<u64> {
 static WASM: OnceLock<Vec<u8>> = OnceLock::new();
 static TOKEN_WASM: OnceLock<Vec<u8>> = OnceLock::new();
 static FACTORY_WASM: OnceLock<Vec<u8>> = OnceLock::new();
+static MPC_WASM: OnceLock<Vec<u8>> = OnceLock::new();
 
 pub fn wasm() -> Vec<u8> {
     WASM.get_or_init(|| {
@@ -75,6 +76,12 @@ fn build(manifest: &str) -> Vec<u8> {
 pub fn token_wasm() -> Vec<u8> {
     TOKEN_WASM
         .get_or_init(|| build("../test-token/Cargo.toml"))
+        .clone()
+}
+
+pub fn mpc_wasm() -> Vec<u8> {
+    MPC_WASM
+        .get_or_init(|| build("../test-mpc/Cargo.toml"))
         .clone()
 }
 
@@ -163,6 +170,7 @@ pub struct Env {
     pub shop: AccountId,
     pub attacker: AccountId,
     pub purse: AccountId,
+    pub mpc: AccountId,
     pub agent_key: SecretKey,
     pub agent: Arc<Signer>,
 }
@@ -188,9 +196,17 @@ impl Env {
         let shop: AccountId = "shop.sandbox".parse()?;
         let attacker: AccountId = "attacker.sandbox".parse()?;
         let purse: AccountId = "purse.sandbox".parse()?;
-        for id in [&owner, &shop, &attacker] {
+        let mpc: AccountId = "mpc.sandbox".parse()?;
+        for id in [&owner, &shop, &attacker, &mpc] {
             sandbox.create_account(id.clone()).send().await?;
         }
+        Contract::deploy(mpc.clone())
+            .use_code(mpc_wasm())
+            .without_init_call()
+            .with_signer(root.clone())
+            .send_to(&net)
+            .await?
+            .assert_success();
         sandbox
             .create_account(purse.clone())
             .initial_balance(NearToken::from_near(50))
@@ -201,7 +217,7 @@ impl Env {
             .use_code(wasm())
             .with_init_call(
                 "new",
-                json!({ "owner": owner, "ops": policy_ops(&policy(&shop)) }),
+                json!({ "owner": owner, "mpc": mpc, "ops": policy_ops(&policy(&shop)) }),
             )?
             .with_signer(root.clone())
             .send_to(&net)
@@ -218,6 +234,7 @@ impl Env {
             shop,
             attacker,
             purse,
+            mpc,
             agent_key,
             agent,
         };
@@ -252,7 +269,7 @@ impl Env {
             .call_function(method, args)
             .transaction()
             .deposit(NearToken::from_yoctonear(deposit))
-            .gas(NearGas::from_tgas(100))
+            .gas(NearGas::from_tgas(200))
             .with_signer(self.purse.clone(), self.agent.clone())
             .send_to(&self.net)
             .await
@@ -296,6 +313,16 @@ impl Env {
             .await?
             .total
             .as_yoctonear())
+    }
+
+    /// Every signing request the mock MPC contract has received.
+    pub async fn mpc_seen(&self) -> TestResult<Vec<Value>> {
+        Ok(Contract(self.mpc.clone())
+            .call_function("seen", ())
+            .read_only()
+            .fetch_from(&self.net)
+            .await?
+            .data)
     }
 
     pub async fn now_s(&self) -> TestResult<u64> {

@@ -10,6 +10,26 @@ pub const MAX_TOKEN_ID_BYTES: usize = 128;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EvmAddress(pub [u8; 20]);
 
+pub fn hex_decode(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+pub fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0xf) as usize] as char);
+    }
+    s
+}
+
 impl TryFrom<String> for EvmAddress {
     type Error = &'static str;
 
@@ -17,26 +37,20 @@ impl TryFrom<String> for EvmAddress {
         let hex = s
             .strip_prefix("0x")
             .ok_or("evm address must start with 0x")?;
-        if hex.len() != 40 {
-            return Err("evm address must be 20 bytes");
-        }
-        let mut out = [0u8; 20];
-        for (i, byte) in out.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).map_err(|_| "bad hex")?;
-        }
-        Ok(Self(out))
+        let bytes = hex_decode(hex).ok_or("bad hex")?;
+        Ok(Self(
+            bytes
+                .try_into()
+                .map_err(|_| "evm address must be 20 bytes")?,
+        ))
     }
 }
 
 impl From<EvmAddress> for String {
     fn from(a: EvmAddress) -> Self {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut s = String::with_capacity(42);
         s.push_str("0x");
-        for b in a.0 {
-            s.push(HEX[(b >> 4) as usize] as char);
-            s.push(HEX[(b & 0xf) as usize] as char);
-        }
+        s.push_str(&hex_encode(&a.0));
         s
     }
 }
@@ -94,6 +108,7 @@ impl IntentDest {
 }
 
 #[near(serializers = [borsh, json])]
+#[serde(deny_unknown_fields)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dest {
     Near { account: AccountId },
@@ -102,8 +117,10 @@ pub enum Dest {
 }
 
 /// Everything the agent can say about a spend. There is deliberately no field for a hash,
-/// raw transaction, calldata, nonce or gas price: the contract builds those itself.
+/// raw transaction, calldata, nonce or gas price: the contract builds those itself, and an
+/// unknown field is an error rather than silently ignored.
 #[near(serializers = [borsh, json])]
+#[serde(deny_unknown_fields)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpendRequest {
     pub asset: Asset,
@@ -177,7 +194,9 @@ impl Dest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DenyReason {
     Frozen,
-    DuplicateIdempotencyKey { req_id: u64 },
+    DuplicateIdempotencyKey {
+        req_id: u64,
+    },
     AssetNotAllowed,
     AssetDestMismatch,
     ChainNotAllowed,
@@ -185,11 +204,24 @@ pub enum DenyReason {
     RecipientNotAllowed,
     PairNotAllowed,
     RateBelowFloor,
-    OverPerTxCap { cap: U128 },
-    Cooldown { retry_at: u64 },
-    Velocity { retry_after_s: u32 },
-    OverWindow { period_s: u32, remaining: U128 },
+    OverPerTxCap {
+        cap: U128,
+    },
+    Cooldown {
+        retry_at: u64,
+    },
+    Velocity {
+        retry_after_s: u32,
+    },
+    OverWindow {
+        period_s: u32,
+        remaining: U128,
+    },
     FeeBudgetExhausted,
+    /// The owner hasn't set gas caps for this chain.
+    GasCapsMissing,
+    /// EVM gas is paid in the chain's native token, which needs its own asset rule.
+    NoGasBudget,
     PathUnavailable,
 }
 
@@ -208,7 +240,14 @@ pub enum RequestStatus {
     PendingCosign,
     PendingRisk,
     Executing,
+    /// EVM only: signed; waits for the owner to confirm it or replace it on-chain.
+    Signed,
+    /// EVM only: the MPC call failed from our side, but a signature may still exist, so the
+    /// nonce and budget stay held until a cancel at the same nonce is confirmed.
+    SigningFailed,
     Done,
+    /// EVM only: a cancel at the same nonce was confirmed, so the budget was released.
+    Replaced,
     Failed,
     Cancelled,
     Rejected,
@@ -223,7 +262,12 @@ impl RequestStatus {
     pub const fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Done | Self::Failed | Self::Cancelled | Self::Rejected | Self::Expired
+            Self::Done
+                | Self::Failed
+                | Self::Cancelled
+                | Self::Rejected
+                | Self::Expired
+                | Self::Replaced
         )
     }
 }
@@ -244,6 +288,18 @@ pub struct Reservation {
     pub amount: U128,
 }
 
+/// The exact fields the contract signed, so the transaction can be rebuilt byte for byte.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvmTx {
+    pub nonce: u64,
+    pub gas_limit: u64,
+    pub max_fee_per_gas: U128,
+    pub max_priority_fee_per_gas: U128,
+    pub raw_tx: Option<String>,
+    pub cancel_tx: Option<String>,
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
@@ -253,6 +309,7 @@ pub struct Request {
     pub created_at: u64,
     pub expires_at: Option<u64>,
     pub reservations: Vec<Reservation>,
+    pub evm: Option<EvmTx>,
 }
 
 #[cfg(test)]
