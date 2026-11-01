@@ -5,10 +5,11 @@ export async function jsonRpc<T>(
   method: string,
   params: unknown,
   fetchFn: Fetch = fetch,
+  headers: Record<string, string> = {},
 ): Promise<T> {
   const res = await fetchFn(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
   const body = (await res.json()) as { result?: T; error?: { message?: string; data?: unknown } };
