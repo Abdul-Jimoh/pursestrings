@@ -137,7 +137,7 @@ async fn inv1_owner_cannot_be_the_account_itself() -> TestResult {
         .use_code(common::wasm())
         .with_init_call(
             "new",
-            json!({ "owner": selfish, "mpc": env.mpc, "ops": common::policy_ops(&base_policy(&env.shop)) }),
+            json!({ "owner": selfish, "mpc": env.mpc, "intents": "intents.sandbox", "ops": common::policy_ops(&base_policy(&env.shop)) }),
         )?
         .with_signer(env.root.clone())
         .send_to(&env.net)
@@ -148,7 +148,7 @@ async fn inv1_owner_cannot_be_the_account_itself() -> TestResult {
         env.call_as(
             &env.attacker,
             "new",
-            json!({ "owner": env.attacker, "mpc": env.mpc, "ops": common::policy_ops(&base_policy(&env.shop)) }),
+            json!({ "owner": env.attacker, "mpc": env.mpc, "intents": "intents.sandbox", "ops": common::policy_ops(&base_policy(&env.shop)) }),
             0
         )
         .await

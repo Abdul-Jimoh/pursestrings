@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 near-sdk.workspace = true
+ed25519-dalek = { version = "2.2", default-features = false, features = ["fast"] }
 
 [lints]
 workspace = true

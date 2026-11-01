@@ -1,6 +1,6 @@
 use near_contract_standards::fungible_token::{FungibleToken, FungibleTokenCore};
 use near_sdk::json_types::U128;
-use near_sdk::{AccountId, PanicOnDefault, near};
+use near_sdk::{AccountId, PanicOnDefault, PromiseOrValue, near};
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -28,6 +28,31 @@ impl TestToken {
     #[payable]
     pub fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
         self.token.ft_transfer(receiver_id, amount, memo);
+    }
+
+    #[payable]
+    pub fn ft_transfer_call(
+        &mut self,
+        receiver_id: AccountId,
+        amount: U128,
+        memo: Option<String>,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
+        self.token.ft_transfer_call(receiver_id, amount, memo, msg)
+    }
+
+    #[private]
+    pub fn ft_resolve_transfer(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        amount: U128,
+    ) -> U128 {
+        U128(
+            self.token
+                .internal_ft_resolve_transfer(&sender_id, receiver_id, amount)
+                .0,
+        )
     }
 
     pub fn ft_balance_of(&self, account_id: AccountId) -> U128 {

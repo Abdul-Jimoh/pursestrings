@@ -1,5 +1,9 @@
+use ed25519_dalek::{Signer, SigningKey};
 use near_sdk::serde_json::{Value, json};
 use near_sdk::{AccountId, NearToken, env, near, require};
+
+/// Stands in for every derived Ed25519 key, so signatures verify like real MPC ones.
+const EDDSA_SECRET: [u8; 32] = [7; 32];
 
 /// `r` and `s` both start with zero bytes, so callers must encode them minimally.
 const BIG_R: &str = "020033333333333333333333333333333333333333333333333333333333333333";
@@ -58,14 +62,30 @@ pub struct TestMpc {
 #[near]
 impl TestMpc {
     #[payable]
-    pub fn sign(&mut self, request: SignRequest) -> EcdsaResponse {
+    pub fn sign(&mut self, request: SignRequest) -> Value {
         require!(
             env::attached_deposit() >= NearToken::from_yoctonear(1),
             "deposit required"
         );
         require!(!self.fail, "signing failed");
-        let payload = match request.payload_v2 {
-            Payload::Ecdsa(p) | Payload::Eddsa(p) => p,
+        let (payload, eddsa) = match request.payload_v2 {
+            Payload::Ecdsa(p) => (p, false),
+            Payload::Eddsa(p) => (p, true),
+        };
+        let response = if eddsa {
+            let bytes = hex_decode(&payload);
+            let sig = SigningKey::from_bytes(&EDDSA_SECRET).sign(&bytes);
+            json!({ "scheme": "Ed25519", "signature": sig.to_bytes().to_vec() })
+        } else {
+            near_sdk::serde_json::to_value(EcdsaResponse {
+                scheme: "Secp256k1".into(),
+                big_r: AffinePoint {
+                    affine_point: BIG_R.into(),
+                },
+                s: Scalar { scalar: S.into() },
+                recovery_id: 1,
+            })
+            .unwrap()
         };
         self.seen.push(Seen {
             predecessor: env::predecessor_account_id(),
@@ -73,14 +93,22 @@ impl TestMpc {
             payload,
             domain_id: request.domain_id,
         });
-        EcdsaResponse {
-            scheme: "Secp256k1".into(),
-            big_r: AffinePoint {
-                affine_point: BIG_R.into(),
-            },
-            s: Scalar { scalar: S.into() },
-            recovery_id: 1,
-        }
+        response
+    }
+
+    pub fn derived_public_key(
+        &self,
+        path: String,
+        predecessor: Option<AccountId>,
+        domain_id: Option<u64>,
+    ) -> String {
+        let _ = (path, predecessor);
+        require!(domain_id == Some(1), "only the ed25519 domain is mocked");
+        let pk = SigningKey::from_bytes(&EDDSA_SECRET).verifying_key();
+        format!(
+            "ed25519:{}",
+            near_sdk::bs58::encode(pk.as_bytes()).into_string()
+        )
     }
 
     /// Succeeds only for ids marked final; anything else fails, as a real request times out.
@@ -116,4 +144,11 @@ impl TestMpc {
     pub fn seen(&self) -> Vec<Seen> {
         self.seen.clone()
     }
+}
+
+fn hex_decode(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex payload"))
+        .collect()
 }

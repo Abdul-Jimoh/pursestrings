@@ -39,6 +39,16 @@ pub enum Event {
         raw_tx: String,
         cancel: bool,
     },
+    /// Everything a relayer needs for a `raw_ed25519` entry in `execute_intents`.
+    #[event_version("1.0.0")]
+    SignedIntent {
+        req_id: u64,
+        payload: String,
+        public_key: PublicKey,
+        signature: String,
+    },
+    #[event_version("1.0.0")]
+    IntentsKeyRegistered { public_key: PublicKey },
     #[event_version("1.0.0")]
     Migrating {
         proposal_id: u64,

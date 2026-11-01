@@ -36,7 +36,7 @@ async fn deploy_both(sandbox: &Sandbox) -> TestResult {
         .use_code(wasm())
         .with_init_call(
             "new",
-            json!({ "owner": owner, "mpc": "mpc.sandbox", "ops": policy_ops(&base_policy(&shop)) }),
+            json!({ "owner": owner, "mpc": "mpc.sandbox", "intents": "intents.sandbox", "ops": policy_ops(&base_policy(&shop)) }),
         )?
         .with_signer(root.clone())
         .send_to(&net)

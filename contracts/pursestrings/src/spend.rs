@@ -44,17 +44,11 @@ fn idempotency_key(agent: &PublicKey, key: &str) -> [u8; 32] {
 /// NEAR the contract attaches itself when executing a spend of this asset.
 const fn fee_cost(asset: &Asset) -> u128 {
     match asset {
-        // ft_transfer's 1 yocto, and the MPC `sign` deposit.
-        Asset::Nep141 { .. } | Asset::Evm { .. } => 1,
-        Asset::Near | Asset::Intents { .. } => 0,
+        // The 1 yocto that `ft_transfer`, `mt_transfer` and `ft_withdraw` require, or the MPC
+        // `sign` deposit.
+        Asset::Nep141 { .. } | Asset::Evm { .. } | Asset::Intents { .. } => 1,
+        Asset::Near => 0,
     }
-}
-
-const fn executable(asset: &Asset) -> bool {
-    matches!(
-        asset,
-        Asset::Near | Asset::Nep141 { .. } | Asset::Evm { .. }
-    )
 }
 
 /// What a spend draws from each asset's windows. An EVM spend also reserves its worst-case
@@ -90,11 +84,17 @@ fn check_dest(p: &Policy, req: &SpendRequest) -> Result<(), DenyReason> {
             if !p.intent_kinds.contains(&d.kind()) {
                 return Err(DenyReason::IntentKindNotAllowed);
             }
-            if let IntentDest::Swap { buy, min_out } = d {
-                let floor = p.min_rate(token, buy).ok_or(DenyReason::PairNotAllowed)?;
-                if !meets_rate(req.amount.0, min_out.0, &floor.rate) {
-                    return Err(DenyReason::RateBelowFloor);
+            match d {
+                IntentDest::Swap { buy, min_out } => {
+                    let floor = p.min_rate(token, buy).ok_or(DenyReason::PairNotAllowed)?;
+                    if !meets_rate(req.amount.0, min_out.0, &floor.rate) {
+                        return Err(DenyReason::RateBelowFloor);
+                    }
                 }
+                IntentDest::Withdraw { .. } if !token.starts_with("nep141:") => {
+                    return Err(DenyReason::AssetDestMismatch);
+                }
+                _ => {}
             }
         }
         _ => return Err(DenyReason::AssetDestMismatch),
@@ -184,6 +184,13 @@ impl Pursestrings {
     #[private]
     pub fn on_spend_executed(&mut self, req_id: u64) -> bool {
         let ok = is_promise_success();
+        self.finish_execution(req_id, ok);
+        ok
+    }
+}
+
+impl Pursestrings {
+    pub(crate) fn finish_execution(&mut self, req_id: u64, ok: bool) {
         let req = self.requests.get_mut(&req_id).expect("unknown request");
         let reservations = std::mem::take(&mut req.reservations);
         req.status = if ok {
@@ -198,11 +205,8 @@ impl Pursestrings {
             self.release(&reservations);
         }
         Event::RequestStatus { req_id, status }.emit();
-        ok
     }
-}
 
-impl Pursestrings {
     pub(crate) fn evaluate(
         &self,
         agent: &PublicKey,
@@ -276,8 +280,8 @@ impl Pursestrings {
         {
             return Err(DenyReason::FeeBudgetExhausted);
         }
-        if !executable(&req.asset) {
-            return Err(DenyReason::PathUnavailable);
+        if matches!(req.dest, Dest::Intent(IntentDest::Swap { .. })) && self.intents_key.is_none() {
+            return Err(DenyReason::IntentsKeyMissing);
         }
         let above = |t: Option<U128>| t.is_some_and(|t| amount > t.0);
         Ok(if above(rule.risk_check_above) {
@@ -373,6 +377,7 @@ impl Pursestrings {
                 expires_at,
                 reservations,
                 evm: None,
+                intent: None,
             },
         );
         if status == RequestStatus::Executing {
@@ -391,8 +396,10 @@ impl Pursestrings {
     }
 
     fn execute(&mut self, req_id: u64, spend: &SpendRequest) -> Promise {
-        if let Asset::Evm { .. } = spend.asset {
-            return self.start_evm(req_id, spend);
+        match spend.asset {
+            Asset::Evm { .. } => return self.start_evm(req_id, spend),
+            Asset::Intents { .. } => return self.start_intent(req_id, spend),
+            Asset::Near | Asset::Nep141 { .. } => {}
         }
         let Dest::Near { account } = &spend.dest else {
             env::panic_str("execution path unavailable")
@@ -462,6 +469,7 @@ mod tests {
         let mut c = Pursestrings::new(
             "owner.near".parse().unwrap(),
             "mpc.near".parse().unwrap(),
+            "intents.near".parse().unwrap(),
             vec![],
         );
         c.policy = policy;
@@ -593,14 +601,72 @@ mod tests {
                 den: U128(1),
             },
         });
-        let c = contract(p);
+        let mut c = contract(p);
         assert_eq!(
             c.evaluate(&agent_pk(), &swap(100, 299), 1_000),
             Err(DenyReason::RateBelowFloor)
         );
         assert_eq!(
             c.evaluate(&agent_pk(), &swap(100, 300), 1_000),
-            Err(DenyReason::PathUnavailable)
+            Err(DenyReason::IntentsKeyMissing)
+        );
+        c.intents_key = Some(agent_pk());
+        assert_eq!(
+            c.evaluate(&agent_pk(), &swap(100, 300), 1_000),
+            Ok(Route::Execute)
+        );
+    }
+
+    #[test]
+    fn withdraw_allowlist_covers_the_memo() {
+        let mut p = base_policy();
+        let token = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+        p.assets.push(AssetRule {
+            asset: Asset::Intents {
+                token: token.into(),
+            },
+            per_tx_cap: U128(1_000),
+            windows: vec![],
+            cosign_above: None,
+            risk_check_above: None,
+        });
+        p.intent_kinds.push(crate::types::IntentKind::Withdraw);
+        let bridge: AccountId = "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near"
+            .parse()
+            .unwrap();
+        let ours = Some("WITHDRAW_TO:0x4e60a71d1593928c076ddb205d2ba4068bfd8be8".to_string());
+        p.recipients.push(crate::types::Recipient::Withdraw {
+            receiver: bridge.clone(),
+            memo: ours.clone(),
+        });
+        let c = contract(p);
+        let withdraw = |memo: Option<String>| SpendRequest {
+            asset: Asset::Intents {
+                token: token.into(),
+            },
+            amount: U128(10),
+            dest: Dest::Intent(IntentDest::Withdraw {
+                receiver: bridge.clone(),
+                memo,
+            }),
+            purpose: String::new(),
+            idempotency_key: "w".into(),
+        };
+        assert_eq!(
+            c.evaluate(&agent_pk(), &withdraw(ours), 1_000),
+            Ok(Route::Execute)
+        );
+        assert_eq!(
+            c.evaluate(
+                &agent_pk(),
+                &withdraw(Some("WITHDRAW_TO:0xattacker".into())),
+                1_000
+            ),
+            Err(DenyReason::RecipientNotAllowed)
+        );
+        assert_eq!(
+            c.evaluate(&agent_pk(), &withdraw(None), 1_000),
+            Err(DenyReason::RecipientNotAllowed)
         );
     }
 

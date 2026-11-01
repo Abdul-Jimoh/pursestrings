@@ -1,6 +1,7 @@
 mod admin;
 mod events;
 mod evm;
+mod intents;
 pub mod policy;
 mod ring;
 mod spend;
@@ -27,6 +28,7 @@ enum StorageKey {
     Proposals,
     EvmNonces,
     EvmOpen,
+    IntentsOpen,
 }
 
 #[near(serializers = [borsh, json])]
@@ -83,6 +85,12 @@ pub struct Pursestrings {
     evm_nonces: LookupMap<u64, u64>,
     /// EVM requests sent for signing and not yet resolved by the owner.
     evm_open: IterableSet<u64>,
+    /// `intents.near` on mainnet.
+    intents: AccountId,
+    /// This account's MPC-derived key, once `intents.near` has registered it.
+    intents_key: Option<PublicKey>,
+    /// Swaps sent for signing whose outcome isn't settled yet.
+    intents_open: IterableSet<u64>,
 }
 
 pub(crate) fn now_s() -> u64 {
@@ -94,7 +102,7 @@ impl Pursestrings {
     /// Builds the initial policy from the same ops `propose` takes, applied immediately to an
     /// empty policy. Every later loosening goes through the timelock.
     #[init]
-    pub fn new(owner: AccountId, mpc: AccountId, ops: Vec<PolicyOp>) -> Self {
+    pub fn new(owner: AccountId, mpc: AccountId, intents: AccountId, ops: Vec<PolicyOp>) -> Self {
         // The agent key's predecessor is this account, so the owner must be someone else.
         require!(
             owner != env::current_account_id(),
@@ -127,6 +135,9 @@ impl Pursestrings {
             mpc,
             evm_nonces: LookupMap::new(StorageKey::EvmNonces),
             evm_open: IterableSet::new(StorageKey::EvmOpen),
+            intents,
+            intents_key: None,
+            intents_open: IterableSet::new(StorageKey::IntentsOpen),
         }
     }
 
@@ -153,6 +164,22 @@ impl Pursestrings {
     /// What a relayer broadcasts: signed EVM requests the owner hasn't resolved yet.
     pub fn evm_open(&self) -> Vec<(u64, Request)> {
         self.evm_open
+            .iter()
+            .filter_map(|id| self.requests.get(id).map(|r| (*id, r.clone())))
+            .collect()
+    }
+
+    pub fn intents(&self) -> AccountId {
+        self.intents.clone()
+    }
+
+    pub fn intents_key(&self) -> Option<PublicKey> {
+        self.intents_key.clone()
+    }
+
+    /// What a relayer submits: signed swaps that haven't been settled yet.
+    pub fn intents_open(&self) -> Vec<(u64, Request)> {
+        self.intents_open
             .iter()
             .filter_map(|id| self.requests.get(id).map(|r| (*id, r.clone())))
             .collect()

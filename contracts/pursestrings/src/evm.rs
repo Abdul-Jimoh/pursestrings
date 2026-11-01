@@ -16,7 +16,7 @@ use crate::{Pursestrings, PursestringsExt};
 /// One derivation path per account, so the account has the same address on every EVM chain.
 pub const EVM_PATH: &str = "evm";
 const SECP256K1_DOMAIN: u64 = 0;
-const MPC_SIGN_GAS: Gas = Gas::from_tgas(50);
+pub(crate) const MPC_SIGN_GAS: Gas = Gas::from_tgas(50);
 const EVM_CALLBACK_GAS: Gas = Gas::from_tgas(20);
 const ERC20_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb];
 const CANCEL_GAS_LIMIT: u64 = 21_000;
@@ -43,22 +43,23 @@ const fn mpc_chain(chain_id: u64) -> Option<&'static str> {
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-struct SignArgs<'a> {
-    request: SignRequest<'a>,
+pub(crate) struct SignArgs<'a> {
+    pub request: SignRequest<'a>,
 }
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-struct SignRequest<'a> {
-    path: &'a str,
-    payload_v2: Payload,
-    domain_id: u64,
+pub(crate) struct SignRequest<'a> {
+    pub path: &'a str,
+    pub payload_v2: Payload,
+    pub domain_id: u64,
 }
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-enum Payload {
+pub(crate) enum Payload {
     Ecdsa(String),
+    Eddsa(String),
 }
 
 #[near(serializers = [json])]

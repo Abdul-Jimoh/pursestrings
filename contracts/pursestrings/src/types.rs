@@ -83,8 +83,10 @@ pub enum IntentDest {
         buy: String,
         min_out: U128,
     },
+    /// `ft_withdraw` of a NEP-141 token. Bridged tokens read the real destination from the memo
+    /// (`WITHDRAW_TO:<address>`), so the allowlist entry covers the memo too.
     Withdraw {
-        receiver: String,
+        receiver: AccountId,
         memo: Option<String>,
     },
 }
@@ -139,33 +141,48 @@ impl SpendRequest {
                 && self.idempotency_key.len() <= MAX_IDEMPOTENCY_KEY_BYTES,
             "idempotency_key must be 1..=64 bytes"
         );
-        let token_ok = |t: &str| !t.is_empty() && t.len() <= MAX_TOKEN_ID_BYTES;
         if let Asset::Intents { token } = &self.asset {
-            require!(token_ok(token), "bad intents token id");
-        }
-        if let Dest::Intent(d) = &self.dest {
-            match d {
-                IntentDest::Swap { buy, .. } => require!(token_ok(buy), "bad intents token id"),
-                IntentDest::Withdraw { receiver, memo } => {
-                    require!(token_ok(receiver), "bad withdraw receiver");
-                    require!(
-                        memo.as_ref().is_none_or(|m| m.len() <= MAX_PURPOSE_BYTES),
-                        "memo too long"
-                    );
-                }
-                IntentDest::Transfer { .. } => {}
+            require!(valid_token_id(token), "bad intents token id");
+            if let Dest::Intent(IntentDest::Swap { buy, .. }) = &self.dest {
+                require!(valid_token_id(buy), "bad intents token id");
+                require!(buy != token, "a swap needs two different tokens");
             }
         }
+        if let Dest::Intent(IntentDest::Withdraw { memo, .. }) = &self.dest {
+            require!(
+                memo.as_ref().is_none_or(|m| m.len() <= MAX_PURPOSE_BYTES),
+                "memo too long"
+            );
+        }
     }
+}
+
+/// An `intents.near` fungible token id. The charset keeps ids inert inside the signed payload.
+pub fn valid_token_id(t: &str) -> bool {
+    t.len() <= MAX_TOKEN_ID_BYTES
+        && (t.starts_with("nep141:") || t.starts_with("nep245:"))
+        && t.len() > "nep141:".len()
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b':'))
 }
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Recipient {
-    Near { account: AccountId },
-    Evm { chain_id: u64, address: EvmAddress },
-    Intents { account: AccountId },
-    Withdraw { receiver: String },
+    Near {
+        account: AccountId,
+    },
+    Evm {
+        chain_id: u64,
+        address: EvmAddress,
+    },
+    Intents {
+        account: AccountId,
+    },
+    Withdraw {
+        receiver: AccountId,
+        memo: Option<String>,
+    },
 }
 
 impl Dest {
@@ -182,8 +199,9 @@ impl Dest {
             Self::Intent(IntentDest::Transfer { receiver }) => Some(Recipient::Intents {
                 account: receiver.clone(),
             }),
-            Self::Intent(IntentDest::Withdraw { receiver, .. }) => Some(Recipient::Withdraw {
+            Self::Intent(IntentDest::Withdraw { receiver, memo }) => Some(Recipient::Withdraw {
                 receiver: receiver.clone(),
+                memo: memo.clone(),
             }),
             Self::Intent(IntentDest::Swap { .. }) => None,
         }
@@ -222,7 +240,8 @@ pub enum DenyReason {
     GasCapsMissing,
     /// EVM gas is paid in the chain's native token, which needs its own asset rule.
     NoGasBudget,
-    PathUnavailable,
+    /// A swap needs the account's MPC key registered on `intents.near` first.
+    IntentsKeyMissing,
 }
 
 #[near(serializers = [borsh, json])]
@@ -240,10 +259,10 @@ pub enum RequestStatus {
     PendingCosign,
     PendingRisk,
     Executing,
-    /// EVM only: signed; waits for the owner to confirm it or replace it on-chain.
+    /// EVM or swap: signed; the budget stays reserved until the outcome is proven.
     Signed,
-    /// EVM only: the MPC call failed from our side, but a signature may still exist, so the
-    /// nonce and budget stay held until a cancel at the same nonce is confirmed.
+    /// EVM or swap: the MPC call failed from our side, but a signature may still exist, so the
+    /// budget stays held until the nonce is shown to be dead.
     SigningFailed,
     Done,
     /// EVM only: a cancel at the same nonce was confirmed, so the budget was released.
@@ -300,6 +319,19 @@ pub struct EvmTx {
     pub cancel_tx: Option<String>,
 }
 
+/// A `token_diff` swap the contract built and sent for signing.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntentTx {
+    /// Base64, as `intents.near` takes it.
+    pub nonce: String,
+    pub deadline_ns: u64,
+    /// The deadline inside the versioned nonce, after which `intents.near` may forget it.
+    pub nonce_deadline_ns: u64,
+    pub payload: String,
+    pub signature: Option<String>,
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
@@ -310,6 +342,7 @@ pub struct Request {
     pub expires_at: Option<u64>,
     pub reservations: Vec<Reservation>,
     pub evm: Option<EvmTx>,
+    pub intent: Option<IntentTx>,
 }
 
 #[cfg(test)]
@@ -323,6 +356,29 @@ mod tests {
         assert_eq!(String::from(a), s);
         let upper = EvmAddress::try_from("0x9D7AC751235B819991b3050d3f19e58a8E66Ae03".to_string());
         assert_eq!(upper.unwrap(), a);
+    }
+
+    #[test]
+    fn token_ids_are_inert_in_json() {
+        for ok in [
+            "nep141:wrap.near",
+            "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+            "nep245:v2_1.omni.hot.tg:56_11111111111111111111",
+        ] {
+            assert!(valid_token_id(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "nep141:",
+            "wrap.near",
+            "nep171:nft.near:1",
+            r#"nep141:a","nep141:b":"-1"#,
+            "nep141:a\\u0022",
+            "nep141:a b",
+        ] {
+            assert!(!valid_token_id(bad), "{bad}");
+        }
+        assert!(!valid_token_id(&format!("nep141:{}", "a".repeat(122))));
     }
 
     #[test]

@@ -29,6 +29,7 @@ cargo-near-build.workspace = true
 tokio.workspace = true
 testresult.workspace = true
 sha3 = "0.10"
+ed25519-dalek = "2.2"
 
 [lints]
 workspace = true

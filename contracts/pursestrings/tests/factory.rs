@@ -123,7 +123,7 @@ impl Setup {
     }
 
     fn new_args(&self, policy: Value) -> Vec<u8> {
-        json!({ "owner": self.owner, "mpc": "mpc.sandbox", "ops": policy_ops(&policy) })
+        json!({ "owner": self.owner, "mpc": "mpc.sandbox", "intents": "intents.sandbox", "ops": policy_ops(&policy) })
             .to_string()
             .into_bytes()
     }

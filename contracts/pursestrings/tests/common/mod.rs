@@ -217,7 +217,12 @@ impl Env {
             .use_code(wasm())
             .with_init_call(
                 "new",
-                json!({ "owner": owner, "mpc": mpc, "ops": policy_ops(&policy(&shop)) }),
+                json!({
+                    "owner": owner,
+                    "mpc": mpc,
+                    "intents": "intents.sandbox",
+                    "ops": policy_ops(&policy(&shop))
+                }),
             )?
             .with_signer(root.clone())
             .send_to(&net)
