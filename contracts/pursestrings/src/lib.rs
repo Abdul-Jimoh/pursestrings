@@ -62,6 +62,8 @@ pub struct BudgetStatus {
 #[derive(PanicOnDefault)]
 pub struct Pursestrings {
     owner: AccountId,
+    /// The account that created this one; it vouches for migration targets.
+    factory: AccountId,
     policy: Policy,
     agents: IterableMap<PublicKey, Agent>,
     requests: LookupMap<u64, Request>,
@@ -90,6 +92,10 @@ impl Pursestrings {
             "owner must be a separate account"
         );
         require!(ops.len() <= MAX_OPS_PER_PROPOSAL * 4, "too many ops");
+        require!(
+            !ops.iter().any(|op| matches!(op, PolicyOp::Migrate { .. })),
+            "no migration at init"
+        );
         let mut policy = Policy::empty();
         for op in &ops {
             apply(op.clone(), &mut policy);
@@ -99,6 +105,7 @@ impl Pursestrings {
         Event::PolicyChanged { version: 1, ops }.emit();
         Self {
             owner,
+            factory: env::predecessor_account_id(),
             policy,
             agents: IterableMap::new(StorageKey::Agents),
             requests: LookupMap::new(StorageKey::Requests),
@@ -111,8 +118,20 @@ impl Pursestrings {
         }
     }
 
+    /// Called by `apply_migration` in the same batch that deploys new code. This version's
+    /// state layout is the current one, so it reads the state back unchanged.
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        env::state_read().expect("no state to migrate")
+    }
+
     pub fn owner(&self) -> AccountId {
         self.owner.clone()
+    }
+
+    pub fn factory(&self) -> AccountId {
+        self.factory.clone()
     }
 
     pub fn policy(&self) -> Policy {

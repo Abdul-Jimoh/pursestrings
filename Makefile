@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-CONTRACTS := pursestrings
+CONTRACTS := pursestrings factory
 
 .PHONY: all build test test-unit test-sandbox test-ts lint fmt demo redteam
 

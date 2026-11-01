@@ -1,4 +1,4 @@
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base58CryptoHash, U128};
 use near_sdk::{near, require};
 
 use crate::ring::BUCKETS;
@@ -92,24 +92,52 @@ pub struct Policy {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PolicyOp {
     SetAssetRule(AssetRule),
-    RemoveAsset { asset: Asset },
+    RemoveAsset {
+        asset: Asset,
+    },
     AddRecipient(Recipient),
     RemoveRecipient(Recipient),
-    AddChain { chain_id: u64 },
-    RemoveChain { chain_id: u64 },
-    AddIntentKind { kind: IntentKind },
-    RemoveIntentKind { kind: IntentKind },
-    SetCooldown { seconds: u32 },
-    SetVelocity { velocity: Option<Velocity> },
+    AddChain {
+        chain_id: u64,
+    },
+    RemoveChain {
+        chain_id: u64,
+    },
+    AddIntentKind {
+        kind: IntentKind,
+    },
+    RemoveIntentKind {
+        kind: IntentKind,
+    },
+    SetCooldown {
+        seconds: u32,
+    },
+    SetVelocity {
+        velocity: Option<Velocity>,
+    },
     SetMinRate(MinRate),
-    RemoveMinRate { sell: String, buy: String },
+    RemoveMinRate {
+        sell: String,
+        buy: String,
+    },
     SetEvmGas(ChainGas),
-    RemoveEvmGas { chain_id: u64 },
+    RemoveEvmGas {
+        chain_id: u64,
+    },
     SetFeeBudget(WindowLimit),
-    SetPendingTtl { seconds: u32 },
-    SetTimelock { seconds: u32 },
+    SetPendingTtl {
+        seconds: u32,
+    },
+    SetTimelock {
+        seconds: u32,
+    },
     Freeze,
     Unfreeze,
+    /// Switch this account to another code hash the factory has published. Always a
+    /// loosening; proposed on its own and applied through `apply_migration`.
+    Migrate {
+        code_hash: Base58CryptoHash,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -177,7 +205,8 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
         PolicyOp::AddRecipient(_)
         | PolicyOp::AddChain { .. }
         | PolicyOp::AddIntentKind { .. }
-        | PolicyOp::Unfreeze => false,
+        | PolicyOp::Unfreeze
+        | PolicyOp::Migrate { .. } => false,
     };
     if tight {
         Effect::Tighten
@@ -231,6 +260,8 @@ pub fn apply(op: PolicyOp, p: &mut Policy) {
         PolicyOp::SetTimelock { seconds } => p.timelock_s = seconds,
         PolicyOp::Freeze => p.frozen = true,
         PolicyOp::Unfreeze => p.frozen = false,
+        // The code switch happens in `apply_migration`; the policy itself doesn't change.
+        PolicyOp::Migrate { .. } => {}
     }
 }
 

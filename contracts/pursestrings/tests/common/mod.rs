@@ -18,6 +18,7 @@ pub const SANDBOX_VERSION: &str = "2.14.0";
 
 static WASM: OnceLock<Vec<u8>> = OnceLock::new();
 static TOKEN_WASM: OnceLock<Vec<u8>> = OnceLock::new();
+static FACTORY_WASM: OnceLock<Vec<u8>> = OnceLock::new();
 
 pub fn wasm() -> Vec<u8> {
     WASM.get_or_init(|| {
@@ -27,15 +28,23 @@ pub fn wasm() -> Vec<u8> {
     .clone()
 }
 
+fn build(manifest: &str) -> Vec<u8> {
+    let opts = cargo_near_build::BuildOpts::builder()
+        .manifest_path(manifest)
+        .build();
+    let path = cargo_near_build::build_with_cli(opts).expect("contract build");
+    std::fs::read(path).expect("read wasm")
+}
+
 pub fn token_wasm() -> Vec<u8> {
     TOKEN_WASM
-        .get_or_init(|| {
-            let opts = cargo_near_build::BuildOpts::builder()
-                .manifest_path("../test-token/Cargo.toml")
-                .build();
-            let path = cargo_near_build::build_with_cli(opts).expect("token build");
-            std::fs::read(path).expect("read token wasm")
-        })
+        .get_or_init(|| build("../test-token/Cargo.toml"))
+        .clone()
+}
+
+pub fn factory_wasm() -> Vec<u8> {
+    FACTORY_WASM
+        .get_or_init(|| build("../factory/Cargo.toml"))
         .clone()
 }
 

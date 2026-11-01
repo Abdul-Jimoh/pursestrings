@@ -1,4 +1,4 @@
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base58CryptoHash, U128};
 use near_sdk::{PublicKey, near};
 
 use crate::policy::PolicyOp;
@@ -31,4 +31,9 @@ pub enum Event {
     },
     #[event_version("1.0.0")]
     AgentRevoked { public_key: PublicKey },
+    #[event_version("1.0.0")]
+    Migrating {
+        proposal_id: u64,
+        code_hash: Base58CryptoHash,
+    },
 }

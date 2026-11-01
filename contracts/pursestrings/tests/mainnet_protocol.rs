@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{SANDBOX_VERSION, base_policy, policy_ops, wasm};
+use common::{SANDBOX_VERSION, base_policy, factory_wasm, policy_ops, wasm};
 use near_api::{AccountId, Contract, NearToken, NetworkConfig, Signer};
 use near_sandbox::{Sandbox, SandboxConfig};
 use near_sdk::serde_json::json;
@@ -44,6 +44,16 @@ async fn deploys_at_mainnet_protocol_version() -> TestResult {
             json!({ "owner": owner, "ops": policy_ops(&base_policy(&shop)) }),
         )?
         .with_signer(root.clone())
+        .send_to(&net)
+        .await?
+        .assert_success();
+
+    let factory: AccountId = "factory.sandbox".parse()?;
+    sandbox.create_account(factory.clone()).send().await?;
+    Contract::deploy(factory)
+        .use_code(factory_wasm())
+        .with_init_call("new", json!({ "admin": owner }))?
+        .with_signer(root)
         .send_to(&net)
         .await?
         .assert_success();

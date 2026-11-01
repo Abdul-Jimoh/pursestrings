@@ -1,11 +1,23 @@
-use near_sdk::json_types::U128;
-use near_sdk::{Allowance, NearToken, Promise, PublicKey, env, near, require};
+use near_sdk::json_types::{Base58CryptoHash, U128};
+use near_sdk::serde::Serialize;
+use near_sdk::{
+    Allowance, Gas, NearToken, Promise, PublicKey, env, is_promise_success, near, require,
+};
 
 use crate::events::Event;
 use crate::policy::{Effect, MAX_OPS_PER_PROPOSAL, PolicyOp, apply, classify};
 use crate::{Agent, Proposal, Pursestrings, PursestringsExt, now_s};
 
 pub const AGENT_METHODS: &str = "request_spend,cancel_request";
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+struct CodeHashArgs {
+    code_hash: Base58CryptoHash,
+}
+
+const FACTORY_CHECK_GAS: Gas = Gas::from_tgas(10);
+const MIGRATION_CALLBACK_GAS: Gas = Gas::from_tgas(120);
+const MIGRATE_GAS: Gas = Gas::from_tgas(30);
 
 #[near]
 impl Pursestrings {
@@ -66,6 +78,9 @@ impl Pursestrings {
             !ops.is_empty() && ops.len() <= MAX_OPS_PER_PROPOSAL,
             "1..=32 ops"
         );
+        if ops.iter().any(|op| matches!(op, PolicyOp::Migrate { .. })) {
+            require!(ops.len() == 1, "a migration must be proposed on its own");
+        }
         let mut tighten = Vec::new();
         let mut loosen = Vec::new();
         for op in ops {
@@ -130,9 +145,77 @@ impl Pursestrings {
         self.assert_owner();
         let proposal = self.proposals.get(&id).expect("unknown proposal");
         require!(now_s() >= proposal.eta, "timelocked");
+        require!(
+            !matches!(proposal.ops[..], [PolicyOp::Migrate { .. }]),
+            "use apply_migration"
+        );
         let ops = proposal.ops.clone();
         self.proposals.remove(&id);
         self.apply_now(ops);
+    }
+
+    /// Applies a queued `Migrate` once its timelock has passed. `code` must hash to the queued
+    /// code hash, and the factory must confirm it published that hash before anything deploys.
+    /// Takes borsh arguments `(u64, Vec<u8>)` because the code is a few hundred KB.
+    #[payable]
+    pub fn apply_migration(
+        &mut self,
+        #[serializer(borsh)] id: u64,
+        #[serializer(borsh)] code: Vec<u8>,
+    ) -> Promise {
+        self.assert_owner();
+        let proposal = self.proposals.get(&id).expect("unknown proposal");
+        require!(now_s() >= proposal.eta, "timelocked");
+        let [PolicyOp::Migrate { code_hash }] = proposal.ops[..] else {
+            env::panic_str("not a migration proposal")
+        };
+        require!(
+            env::sha256_array(&code) == near_sdk::CryptoHash::from(code_hash),
+            "code does not match the proposed hash"
+        );
+        Promise::new(self.factory.clone())
+            .function_call(
+                "assert_published",
+                near_sdk::serde_json::to_vec(&CodeHashArgs { code_hash }).expect("args"),
+                NearToken::from_yoctonear(0),
+                FACTORY_CHECK_GAS,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(MIGRATION_CALLBACK_GAS)
+                    .on_migration_checked(id, code_hash.into(), code),
+            )
+    }
+
+    /// Borsh arguments, so the code isn't base64-encoded a second time.
+    #[private]
+    pub fn on_migration_checked(
+        &mut self,
+        #[serializer(borsh)] id: u64,
+        #[serializer(borsh)] code_hash: near_sdk::CryptoHash,
+        #[serializer(borsh)] code: Vec<u8>,
+    ) -> Promise {
+        require!(
+            is_promise_success(),
+            "factory has not published this code hash"
+        );
+        require!(
+            self.proposals.remove(&id).is_some(),
+            "proposal was cancelled"
+        );
+        Event::Migrating {
+            proposal_id: id,
+            code_hash: code_hash.into(),
+        }
+        .emit();
+        Promise::new(env::current_account_id())
+            .deploy_contract(code)
+            .function_call(
+                "migrate",
+                b"{}".to_vec(),
+                NearToken::from_yoctonear(0),
+                MIGRATE_GAS,
+            )
     }
 }
 
