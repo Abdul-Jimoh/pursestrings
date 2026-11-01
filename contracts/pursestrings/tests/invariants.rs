@@ -477,3 +477,54 @@ async fn inv6_freeze_and_revoke_in_one_transaction() -> TestResult {
     ));
     Ok(())
 }
+
+#[tokio::test]
+async fn nep141_spend_settles_and_counts_the_fee() -> TestResult {
+    let token: AccountId = "usdc.sandbox".parse()?;
+    let env = Env::new(with(|p| {
+        p["assets"][1]["asset"] = json!({ "Nep141": { "token": "usdc.sandbox" } });
+    }))
+    .await?;
+    env.sandbox.create_account(token.clone()).send().await?;
+    near_api::Contract::deploy(token.clone())
+        .use_code(common::token_wasm())
+        .with_init_call(
+            "new",
+            json!({ "holder": env.purse, "total_supply": "1000" }),
+        )?
+        .with_signer(env.root.clone())
+        .send_to(&env.net)
+        .await?
+        .assert_success();
+    near_api::Contract(token.clone())
+        .call_function("register", json!({ "account_id": env.shop }))
+        .transaction()
+        .with_signer(env.owner.clone(), env.root.clone())
+        .send_to(&env.net)
+        .await?
+        .assert_success();
+
+    let asset = json!({ "Nep141": { "token": token } });
+    let d = env
+        .spend(json!({
+            "asset": asset, "amount": "40",
+            "dest": { "Near": { "account": env.shop } },
+            "purpose": "api credits", "idempotency_key": "usdc-1"
+        }))
+        .await?;
+    let req = d["Approved"]["req_id"].as_u64().expect("approved");
+    wait_for_status(&env, req, "Done").await?;
+
+    let balance = |who: &AccountId| {
+        near_api::Contract(token.clone())
+            .call_function("ft_balance_of", json!({ "account_id": who }))
+            .read_only::<String>()
+            .fetch_from(&env.net)
+    };
+    assert_eq!(balance(&env.shop).await?.data, "40");
+    assert_eq!(balance(&env.purse).await?.data, "960");
+    assert_eq!(used(&env, asset).await?, 40);
+    let fee: Value = env.view("fee_status", json!({})).await?;
+    assert_eq!(fee["used"], "1");
+    Ok(())
+}
