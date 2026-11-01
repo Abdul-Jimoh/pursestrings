@@ -30,10 +30,12 @@ impl TryFrom<String> for EvmAddress {
 
 impl From<EvmAddress> for String {
     fn from(a: EvmAddress) -> Self {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut s = String::with_capacity(42);
         s.push_str("0x");
         for b in a.0 {
-            s.push_str(&format!("{b:02x}"));
+            s.push(HEX[(b >> 4) as usize] as char);
+            s.push(HEX[(b & 0xf) as usize] as char);
         }
         s
     }

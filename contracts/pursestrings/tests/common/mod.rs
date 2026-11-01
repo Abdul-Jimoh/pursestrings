@@ -80,6 +80,36 @@ pub fn base_policy(shop: &AccountId) -> Value {
     })
 }
 
+/// The ops that build `policy` from an empty one, in the shape `new` takes.
+pub fn policy_ops(policy: &Value) -> Value {
+    let mut ops = Vec::new();
+    let list = |k: &str| policy[k].as_array().cloned().unwrap_or_default();
+    for rule in list("assets") {
+        ops.push(json!({ "SetAssetRule": rule }));
+    }
+    for r in list("recipients") {
+        ops.push(json!({ "AddRecipient": r }));
+    }
+    for c in list("chains") {
+        ops.push(json!({ "AddChain": { "chain_id": c } }));
+    }
+    for k in list("intent_kinds") {
+        ops.push(json!({ "AddIntentKind": { "kind": k } }));
+    }
+    for m in list("min_rates") {
+        ops.push(json!({ "SetMinRate": m }));
+    }
+    for g in list("evm_gas") {
+        ops.push(json!({ "SetEvmGas": g }));
+    }
+    ops.push(json!({ "SetCooldown": { "seconds": policy["cooldown_s"] } }));
+    ops.push(json!({ "SetVelocity": { "velocity": policy["velocity"] } }));
+    ops.push(json!({ "SetFeeBudget": policy["fee_budget"] }));
+    ops.push(json!({ "SetPendingTtl": { "seconds": policy["pending_ttl_s"] } }));
+    ops.push(json!({ "SetTimelock": { "seconds": policy["timelock_s"] } }));
+    Value::Array(ops)
+}
+
 pub struct Env {
     pub sandbox: Sandbox,
     pub net: NetworkConfig,
@@ -124,7 +154,10 @@ impl Env {
 
         Contract::deploy(purse.clone())
             .use_code(wasm())
-            .with_init_call("new", json!({ "owner": owner, "policy": policy(&shop) }))?
+            .with_init_call(
+                "new",
+                json!({ "owner": owner, "ops": policy_ops(&policy(&shop)) }),
+            )?
             .with_signer(root.clone())
             .send_to(&net)
             .await?

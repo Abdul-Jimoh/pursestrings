@@ -11,7 +11,8 @@ use near_sdk::{
     AccountId, BorshStorageKey, PanicOnDefault, PublicKey, assert_one_yocto, env, near, require,
 };
 
-use crate::policy::{Policy, PolicyOp, WindowLimit};
+use crate::events::Event;
+use crate::policy::{MAX_OPS_PER_PROPOSAL, Policy, PolicyOp, WindowLimit, apply};
 use crate::ring::Ring;
 use crate::types::{Asset, Request, UsageKey};
 
@@ -79,17 +80,23 @@ pub(crate) fn now_s() -> u64 {
 
 #[near]
 impl Pursestrings {
-    /// The initial policy applies immediately; every later loosening goes through the timelock.
+    /// Builds the initial policy from the same ops `propose` takes, applied immediately to an
+    /// empty policy. Every later loosening goes through the timelock.
     #[init]
-    pub fn new(owner: AccountId, policy: Policy) -> Self {
+    pub fn new(owner: AccountId, ops: Vec<PolicyOp>) -> Self {
         // The agent key's predecessor is this account, so the owner must be someone else.
         require!(
             owner != env::current_account_id(),
             "owner must be a separate account"
         );
-        let mut policy = policy;
+        require!(ops.len() <= MAX_OPS_PER_PROPOSAL * 4, "too many ops");
+        let mut policy = Policy::empty();
+        for op in &ops {
+            apply(op.clone(), &mut policy);
+        }
         policy.version = 1;
         policy.assert_valid();
+        Event::PolicyChanged { version: 1, ops }.emit();
         Self {
             owner,
             policy,

@@ -50,16 +50,14 @@ impl Ring {
     pub fn seconds_until_freed(&self, period_s: u32, now_s: u64, need: u128) -> u32 {
         let len = period_s as u64 / BUCKETS;
         let cur = bucket_at(period_s, now_s);
-        let mut live: Vec<(u64, u128)> = self
-            .slots
-            .iter()
-            .copied()
-            .filter(|(b, a)| *b <= cur && cur - *b < BUCKETS && *a > 0)
-            .collect();
-        live.sort_unstable();
         let mut freed = 0u128;
-        for (b, a) in live {
-            freed = freed.saturating_add(a);
+        for b in cur.saturating_sub(BUCKETS - 1)..=cur {
+            let slot = self.slots.get((b % BUCKETS) as usize);
+            if let Some(&(sb, a)) = slot
+                && sb == b
+            {
+                freed = freed.saturating_add(a);
+            }
             if freed >= need {
                 let at = (b + BUCKETS) * len;
                 return u32::try_from(at.saturating_sub(now_s)).unwrap_or(u32::MAX);

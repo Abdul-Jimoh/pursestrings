@@ -1,6 +1,8 @@
 use near_sdk::json_types::U128;
-use near_sdk::serde_json::json;
-use near_sdk::{Gas, NearToken, Promise, PublicKey, env, is_promise_success, near, require};
+use near_sdk::serde::Serialize;
+use near_sdk::{
+    AccountId, Gas, NearToken, Promise, PublicKey, env, is_promise_success, near, require,
+};
 
 use crate::events::Event;
 use crate::policy::{Policy, meets_rate};
@@ -14,6 +16,14 @@ const FT_TRANSFER_GAS: Gas = Gas::from_tgas(15);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 /// Finished requests (and their idempotency keys) can be pruned after this long.
 pub const RETENTION_S: u64 = 7 * 86_400;
+
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+struct FtTransferArgs<'a> {
+    receiver_id: &'a AccountId,
+    amount: U128,
+    memo: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Route {
@@ -360,18 +370,19 @@ impl Pursestrings {
             Asset::Near => {
                 Promise::new(account.clone()).transfer(NearToken::from_yoctonear(spend.amount.0))
             }
-            Asset::Nep141 { token } => Promise::new(token.clone()).function_call(
-                "ft_transfer",
-                json!({
-                    "receiver_id": account,
-                    "amount": spend.amount,
-                    "memo": format!("pursestrings:{req_id}"),
-                })
-                .to_string()
-                .into_bytes(),
-                NearToken::from_yoctonear(1),
-                FT_TRANSFER_GAS,
-            ),
+            Asset::Nep141 { token } => {
+                let args = FtTransferArgs {
+                    receiver_id: account,
+                    amount: spend.amount,
+                    memo: format!("pursestrings:{req_id}"),
+                };
+                Promise::new(token.clone()).function_call(
+                    "ft_transfer",
+                    near_sdk::serde_json::to_vec(&args).expect("ft_transfer args"),
+                    NearToken::from_yoctonear(1),
+                    FT_TRANSFER_GAS,
+                )
+            }
             Asset::Evm { .. } | Asset::Intents { .. } => {
                 env::panic_str("execution path unavailable")
             }
@@ -417,7 +428,8 @@ mod tests {
 
     fn contract(policy: Policy) -> Pursestrings {
         as_agent(1_000);
-        let mut c = Pursestrings::new("owner.near".parse().unwrap(), policy);
+        let mut c = Pursestrings::new("owner.near".parse().unwrap(), vec![]);
+        c.policy = policy;
         c.agents.insert(
             agent_pk(),
             crate::Agent {

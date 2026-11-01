@@ -245,6 +245,28 @@ fn all_unique<T, K: PartialEq>(v: &[T], key: impl Fn(&T) -> K) -> bool {
 }
 
 impl Policy {
+    /// Nothing can be spent until the owner adds asset rules and recipients.
+    pub const fn empty() -> Self {
+        Self {
+            version: 0,
+            frozen: false,
+            assets: Vec::new(),
+            recipients: Vec::new(),
+            chains: Vec::new(),
+            intent_kinds: Vec::new(),
+            cooldown_s: 0,
+            velocity: None,
+            min_rates: Vec::new(),
+            evm_gas: Vec::new(),
+            fee_budget: WindowLimit {
+                period_s: 86_400,
+                limit: U128(0),
+            },
+            pending_ttl_s: 86_400,
+            timelock_s: 86_400,
+        }
+    }
+
     pub fn rule(&self, asset: &Asset) -> Option<&AssetRule> {
         self.assets.iter().find(|r| &r.asset == asset)
     }
