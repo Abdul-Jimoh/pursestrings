@@ -34,10 +34,10 @@ fmt:
 	pnpm format
 
 demo:
-	@scripts/demo.sh
+	@scripts/with-devnet.sh demo
 
 demo-keep:
-	@scripts/demo.sh --keep
+	@scripts/with-devnet.sh demo --keep
 
 redteam:
-	@echo "make redteam: not implemented yet" >&2; exit 1
+	@scripts/with-devnet.sh redteam

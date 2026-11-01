@@ -110,7 +110,8 @@ fn usdc(n: u128) -> String {
 }
 
 /// The demo procurement agent's policy: $150 a day of USDC wherever it's spent, at most $100 a
-/// day and $50 a payment on each rail, the owner co-signs anything over $40.
+/// day and $50 a payment on each rail, the owner co-signs anything over $40, ten payments an
+/// hour.
 fn policy_ops() -> Value {
     let usdc_near = json!({ "Nep141": { "token": "usdc.sandbox" } });
     let usdc_base = json!({ "Evm": { "chain_id": BASE_SEPOLIA, "token": BASE_USDC } });
@@ -157,7 +158,7 @@ fn policy_ops() -> Value {
             "max_fee_per_gas": "1000000000",
             "max_priority_fee_per_gas": "100000000"
         }}},
-        { "SetVelocity": { "velocity": { "max": 20, "period_s": 3_600 } } },
+        { "SetVelocity": { "velocity": { "max": 10, "period_s": 3_600 } } },
         { "SetFeeBudget": { "period_s": DAY, "limit": "1000" } },
         { "SetPendingTtl": { "seconds": 3_600 } },
         { "SetTimelock": { "seconds": DAY } }

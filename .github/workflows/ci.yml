@@ -50,3 +50,4 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: make demo
+      - run: make redteam
