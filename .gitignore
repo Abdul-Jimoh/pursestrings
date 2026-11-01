@@ -1,0 +1,17 @@
+# Private working notes, not for the public repo
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+docs/
+spikes/
+
+target/
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+dist/
+.next/
+coverage/
+*.tsbuildinfo

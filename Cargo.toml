@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["contracts/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93"
+license = "Apache-2.0"
+repository = "https://github.com/Abdul-Jimoh/pursestrings"
+publish = false
+
+[workspace.dependencies]
+near-sdk = "5.30"
+
+near-sandbox = "0.3"
+near-api = "0.8"
+cargo-near-build = "0.11"
+tokio = { version = "1.54", features = ["full"] }
+testresult = "0.4"
+
+[workspace.lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(near)']
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
