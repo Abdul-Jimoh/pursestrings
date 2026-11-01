@@ -27,21 +27,11 @@ const NS: u64 = 1_000_000_000;
 
 const VIEW_GAS: Gas = Gas::from_tgas(5);
 const ADD_KEY_GAS: Gas = Gas::from_tgas(10);
-const MT_TRANSFER_GAS: Gas = Gas::from_tgas(15);
 /// `ft_withdraw` runs `ft_transfer` plus its own 15 Tgas resolver.
 const FT_WITHDRAW_GAS: Gas = Gas::from_tgas(60);
 const CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const SIGNED_CALLBACK_GAS: Gas = Gas::from_tgas(20);
 const SALT_CALLBACK_GAS: Gas = Gas::from_tgas(85);
-
-#[derive(Serialize)]
-#[serde(crate = "near_sdk::serde")]
-struct MtTransferArgs<'a> {
-    receiver_id: &'a AccountId,
-    token_id: &'a str,
-    amount: U128,
-    memo: String,
-}
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -437,22 +427,7 @@ impl Pursestrings {
         };
         let callback = Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS);
         match dest {
-            IntentDest::Transfer { receiver } => {
-                let args = MtTransferArgs {
-                    receiver_id: receiver,
-                    token_id: token,
-                    amount: spend.amount,
-                    memo: format!("pursestrings:{req_id}"),
-                };
-                Promise::new(self.intents.clone())
-                    .function_call(
-                        "mt_transfer",
-                        near_sdk::serde_json::to_vec(&args).expect("args"),
-                        NearToken::from_yoctonear(1),
-                        MT_TRANSFER_GAS,
-                    )
-                    .then(callback.on_spend_executed(req_id))
-            }
+            IntentDest::Transfer { .. } => env::panic_str("a plain transfer"),
             IntentDest::Withdraw { receiver, memo } => {
                 let args = FtWithdrawArgs {
                     token: token.strip_prefix("nep141:").expect("checked in evaluate"),

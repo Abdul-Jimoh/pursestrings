@@ -6,6 +6,7 @@ use near_sdk::{
 
 use crate::events::Event;
 use crate::policy::{Effect, MAX_OPS_PER_PROPOSAL, PolicyOp, apply, classify};
+use crate::types::Asset;
 use crate::{Agent, Proposal, Pursestrings, PursestringsExt, now_s};
 
 pub const AGENT_METHODS: &str = "request_spend,cancel_request";
@@ -60,6 +61,17 @@ impl Pursestrings {
         }
         .emit();
         Promise::new(env::current_account_id()).delete_key(public_key)
+    }
+
+    /// Moves funds back to the owner, and only to the owner, so a mistaken or phished owner
+    /// signature can't send them anywhere else. Works while frozen. EVM funds leave through
+    /// spends.
+    #[payable]
+    pub fn withdraw(&mut self, asset: Asset, amount: U128) -> Promise {
+        self.assert_owner();
+        require!(amount.0 > 0, "amount must be positive");
+        let owner = self.owner.clone();
+        self.transfer(&asset, &owner, amount, "pursestrings:withdraw".to_string())
     }
 
     #[payable]

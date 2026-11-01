@@ -26,6 +26,15 @@ struct FtTransferArgs<'a> {
     memo: String,
 }
 
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+struct MtTransferArgs<'a> {
+    receiver_id: &'a AccountId,
+    token_id: &'a str,
+    amount: U128,
+    memo: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Route {
     Execute,
@@ -396,39 +405,64 @@ impl Pursestrings {
     }
 
     fn execute(&mut self, req_id: u64, spend: &SpendRequest) -> Promise {
-        match spend.asset {
-            Asset::Evm { .. } => return self.start_evm(req_id, spend),
-            Asset::Intents { .. } => return self.start_intent(req_id, spend),
-            Asset::Near | Asset::Nep141 { .. } => {}
-        }
-        let Dest::Near { account } = &spend.dest else {
-            env::panic_str("execution path unavailable")
+        let to = match (&spend.asset, &spend.dest) {
+            (Asset::Evm { .. }, _) => return self.start_evm(req_id, spend),
+            (Asset::Intents { .. }, Dest::Intent(IntentDest::Transfer { receiver })) => receiver,
+            (Asset::Intents { .. }, _) => return self.start_intent(req_id, spend),
+            (_, Dest::Near { account }) => account,
+            _ => env::panic_str("checked in evaluate"),
         };
-        let call = match &spend.asset {
-            Asset::Near => {
-                Promise::new(account.clone()).transfer(NearToken::from_yoctonear(spend.amount.0))
-            }
-            Asset::Nep141 { token } => {
-                let args = FtTransferArgs {
-                    receiver_id: account,
-                    amount: spend.amount,
-                    memo: format!("pursestrings:{req_id}"),
-                };
-                Promise::new(token.clone()).function_call(
-                    "ft_transfer",
-                    near_sdk::serde_json::to_vec(&args).expect("ft_transfer args"),
-                    NearToken::from_yoctonear(1),
-                    FT_TRANSFER_GAS,
-                )
-            }
-            Asset::Evm { .. } | Asset::Intents { .. } => {
-                env::panic_str("execution path unavailable")
-            }
-        };
-        call.then(
+        self.transfer(
+            &spend.asset,
+            to,
+            spend.amount,
+            format!("pursestrings:{req_id}"),
+        )
+        .then(
             Self::ext(env::current_account_id())
                 .with_static_gas(CALLBACK_GAS)
                 .on_spend_executed(req_id),
+        )
+    }
+
+    /// A NEAR transfer, `ft_transfer`, or `mt_transfer` to an account inside `intents.near`.
+    pub(crate) fn transfer(
+        &self,
+        asset: &Asset,
+        to: &AccountId,
+        amount: U128,
+        memo: String,
+    ) -> Promise {
+        let (contract, method, args) = match asset {
+            Asset::Near => {
+                return Promise::new(to.clone()).transfer(NearToken::from_yoctonear(amount.0));
+            }
+            Asset::Nep141 { token } => (
+                token,
+                "ft_transfer",
+                near_sdk::serde_json::to_vec(&FtTransferArgs {
+                    receiver_id: to,
+                    amount,
+                    memo,
+                }),
+            ),
+            Asset::Intents { token } => (
+                &self.intents,
+                "mt_transfer",
+                near_sdk::serde_json::to_vec(&MtTransferArgs {
+                    receiver_id: to,
+                    token_id: token,
+                    amount,
+                    memo,
+                }),
+            ),
+            Asset::Evm { .. } => env::panic_str("not a NEAR-side asset"),
+        };
+        Promise::new(contract.clone()).function_call(
+            method,
+            args.expect("transfer args"),
+            NearToken::from_yoctonear(1),
+            FT_TRANSFER_GAS,
         )
     }
 }

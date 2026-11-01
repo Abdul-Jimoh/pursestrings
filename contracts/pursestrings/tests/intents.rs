@@ -451,3 +451,52 @@ async fn inv2_intents_swap_is_built_signed_and_settled_by_the_contract() -> Test
 fn near_sdk_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+#[tokio::test]
+async fn owner_withdraws_only_to_itself_even_while_frozen() -> TestResult {
+    let s = Intents::new().await?;
+    let (env, purse, owner) = (&s.env, &s.env.purse, &s.env.owner);
+    let tok_a: AccountId = "tok-a.sandbox".parse()?;
+    s.call(&tok_a, owner, "register", json!({ "account_id": purse }), 0)
+        .await?
+        .assert_success();
+    s.call(
+        &tok_a,
+        owner,
+        "ft_transfer",
+        json!({ "receiver_id": purse, "amount": "20" }),
+        1,
+    )
+    .await?
+    .assert_success();
+    let withdraw = |asset: Value, amount: &str| json!({ "asset": asset, "amount": amount });
+
+    let near = withdraw(json!("Near"), &common::yocto(1_000));
+    assert!(refused(
+        env.call_as(&env.attacker, "withdraw", near.clone(), 1)
+            .await
+    ));
+    assert!(
+        refused(env.agent_call("withdraw", near.clone(), 1).await),
+        "the agent key can't call it"
+    );
+
+    env.owner_call("freeze", json!({})).await?.assert_success();
+    let before = env.balance(owner).await?;
+    env.owner_call("withdraw", near).await?.assert_success();
+    let gained = env.balance(owner).await? - before;
+    assert!(gained > common::NEAR * 99 / 100, "{gained}");
+
+    let ft = withdraw(json!({ "Nep141": { "token": tok_a } }), "20");
+    env.owner_call("withdraw", ft).await?.assert_success();
+    let held: String = s
+        .view_on(&tok_a, "ft_balance_of", json!({ "account_id": purse }))
+        .await?;
+    assert_eq!(held, "0");
+
+    let inside = withdraw(json!({ "Intents": { "token": TOK_A } }), "50");
+    env.owner_call("withdraw", inside).await?.assert_success();
+    assert_eq!(s.mt_balance(owner, TOK_A).await?, 50);
+    assert_eq!(s.mt_balance(purse, TOK_A).await?, 250);
+    Ok(())
+}
