@@ -10,7 +10,7 @@ repository = "https://github.com/Abdul-Jimoh/pursestrings"
 publish = false
 
 [workspace.dependencies]
-near-sdk = "5.30"
+near-sdk = "=5.29.1"
 
 near-sandbox = "0.3"
 near-api = "0.8"

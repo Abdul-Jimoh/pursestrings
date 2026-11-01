@@ -12,7 +12,7 @@ use testresult::TestResult;
 
 pub const NEAR: u128 = 10u128.pow(24);
 
-/// near-sdk 5.30 links the gas-key host functions, which the 2.13 node bundled with
+/// near-sdk links the gas-key host functions (protocol 85), which the 2.13 node bundled with
 /// near-sandbox 0.3 rejects at deploy time.
 pub const SANDBOX_VERSION: &str = "2.14.0";
 

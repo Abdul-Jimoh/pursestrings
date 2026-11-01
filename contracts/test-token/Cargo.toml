@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 near-sdk.workspace = true
-near-contract-standards = "5.30"
+near-contract-standards = "=5.29.1"
 
 [lints]
 workspace = true
