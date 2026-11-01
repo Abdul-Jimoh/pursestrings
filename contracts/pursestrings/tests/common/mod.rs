@@ -16,6 +16,42 @@ pub const NEAR: u128 = 10u128.pow(24);
 /// near-sandbox 0.3 rejects at deploy time.
 pub const SANDBOX_VERSION: &str = "2.14.0";
 
+/// `status` on rpc.mainnet.near.org, 2026-11-01 (testnet is on 88). Every sandbox test runs at
+/// this version so tested behaviour is mainnet behaviour; `tests/protocol.rs` also covers 88.
+pub const MAINNET_PROTOCOL_VERSION: u32 = 86;
+
+/// `None` runs the node's latest protocol version.
+pub async fn start_sandbox_at(protocol_version: Option<u32>) -> TestResult<Sandbox> {
+    let config = near_sandbox::SandboxConfig {
+        additional_genesis: protocol_version.map(|v| json!({ "protocol_version": v })),
+        ..Default::default()
+    };
+    Ok(Sandbox::start_sandbox_with_config_and_version(config, SANDBOX_VERSION).await?)
+}
+
+pub async fn start_sandbox() -> TestResult<Sandbox> {
+    start_sandbox_at(Some(MAINNET_PROTOCOL_VERSION)).await
+}
+
+pub async fn protocol_version(sandbox: &Sandbox) -> TestResult<u64> {
+    let body = json!({ "jsonrpc": "2.0", "id": 0, "method": "status", "params": [] });
+    let out = tokio::process::Command::new("curl")
+        .args([
+            "-s",
+            &sandbox.rpc_addr,
+            "-H",
+            "content-type: application/json",
+            "-d",
+            &body.to_string(),
+        ])
+        .output()
+        .await?;
+    let status: Value = near_sdk::serde_json::from_slice(&out.stdout)?;
+    status["result"]["protocol_version"]
+        .as_u64()
+        .ok_or_else(|| "no protocol_version".into())
+}
+
 static WASM: OnceLock<Vec<u8>> = OnceLock::new();
 static TOKEN_WASM: OnceLock<Vec<u8>> = OnceLock::new();
 static FACTORY_WASM: OnceLock<Vec<u8>> = OnceLock::new();
@@ -143,7 +179,7 @@ pub fn refused(res: Sent) -> bool {
 
 impl Env {
     pub async fn new(policy: impl FnOnce(&AccountId) -> Value) -> TestResult<Self> {
-        let sandbox = Sandbox::start_sandbox_with_version(SANDBOX_VERSION).await?;
+        let sandbox = start_sandbox().await?;
         let net = NetworkConfig::from_rpc_url("sandbox", sandbox.rpc_addr.parse()?);
         let root = Signer::from_secret_key(
             near_sandbox::config::DEFAULT_GENESIS_ACCOUNT_PRIVATE_KEY.parse()?,

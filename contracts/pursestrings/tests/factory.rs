@@ -5,7 +5,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{SANDBOX_VERSION, base_policy, factory_wasm, policy_ops, refused, token_wasm, wasm};
+use common::{base_policy, factory_wasm, policy_ops, refused, token_wasm, wasm};
 use near_api::types::CryptoHash;
 use near_api::types::account::ContractState;
 use near_api::{Account, AccountId, Contract, NearGas, NearToken, NetworkConfig, Signer};
@@ -29,7 +29,7 @@ struct Setup {
 
 impl Setup {
     async fn new() -> TestResult<Self> {
-        let sandbox = Sandbox::start_sandbox_with_version(SANDBOX_VERSION).await?;
+        let sandbox = common::start_sandbox().await?;
         let net = NetworkConfig::from_rpc_url("sandbox", sandbox.rpc_addr.parse()?);
         let root = Signer::from_secret_key(
             near_sandbox::config::DEFAULT_GENESIS_ACCOUNT_PRIVATE_KEY.parse()?,
