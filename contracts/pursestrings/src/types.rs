@@ -235,6 +235,12 @@ pub enum DenyReason {
         period_s: u32,
         remaining: U128,
     },
+    /// The shared window of a budget group, in the group's unit.
+    OverGroupWindow {
+        group: String,
+        period_s: u32,
+        remaining: U128,
+    },
     FeeBudgetExhausted,
     /// The owner hasn't set gas caps for this chain.
     GasCapsMissing,
@@ -297,6 +303,7 @@ pub enum UsageKey {
     Spend { asset: Asset, period_s: u32 },
     Velocity { period_s: u32 },
     Fee { period_s: u32 },
+    Group { name: String, period_s: u32 },
 }
 
 #[near(serializers = [borsh, json])]

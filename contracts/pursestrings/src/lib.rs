@@ -235,6 +235,27 @@ impl Pursestrings {
         })
     }
 
+    pub fn group_status(&self, name: String) -> Option<Vec<WindowStatus>> {
+        let group = self.policy.group(&name)?;
+        let now = now_s();
+        Some(
+            group
+                .windows
+                .iter()
+                .map(|w| {
+                    self.window_status(
+                        UsageKey::Group {
+                            name: name.clone(),
+                            period_s: w.period_s,
+                        },
+                        w,
+                        now,
+                    )
+                })
+                .collect(),
+        )
+    }
+
     pub fn fee_status(&self) -> WindowStatus {
         let w = &self.policy.fee_budget;
         self.window_status(

@@ -154,6 +154,9 @@ pub fn policy_ops(policy: &Value) -> Value {
     for g in list("evm_gas") {
         ops.push(json!({ "SetEvmGas": g }));
     }
+    for g in list("groups") {
+        ops.push(json!({ "SetGroup": g }));
+    }
     ops.push(json!({ "SetCooldown": { "seconds": policy["cooldown_s"] } }));
     ops.push(json!({ "SetVelocity": { "velocity": policy["velocity"] } }));
     ops.push(json!({ "SetFeeBudget": policy["fee_budget"] }));

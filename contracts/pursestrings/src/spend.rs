@@ -6,7 +6,7 @@ use near_sdk::{
 
 use crate::events::Event;
 use crate::evm::max_gas_cost;
-use crate::policy::{Policy, meets_rate};
+use crate::policy::{Policy, WindowLimit, meets_rate};
 use crate::types::{
     Asset, Decision, DenyReason, Dest, IntentDest, Request, RequestStatus, Reservation,
     SpendRequest, UsageKey,
@@ -76,6 +76,48 @@ fn charges(p: &Policy, req: &SpendRequest) -> Result<Vec<(Asset, u128)>, DenyRea
             out[0].1 = out[0].1.checked_add(gas).ok_or(DenyReason::NoGasBudget)?;
         } else {
             out.push((native, gas));
+        }
+    }
+    Ok(out)
+}
+
+/// Every window a spend draws from: each charged asset's own windows and, for assets in a
+/// budget group, the group's shared windows in the group's unit.
+fn window_charges(
+    p: &Policy,
+    req: &SpendRequest,
+) -> Result<Vec<(UsageKey, WindowLimit, u128)>, DenyReason> {
+    let mut out: Vec<(UsageKey, WindowLimit, u128)> = Vec::new();
+    let mut add = |key: UsageKey, w: &WindowLimit, amount: u128| match out
+        .iter_mut()
+        .find(|(k, ..)| *k == key)
+    {
+        Some(slot) => slot.2 = slot.2.saturating_add(amount),
+        None => out.push((key, w.clone(), amount)),
+    };
+    for (asset, charge) in charges(p, req)? {
+        let rule = p.rule(&asset).expect("checked in charges");
+        for w in &rule.windows {
+            let key = UsageKey::Spend {
+                asset: asset.clone(),
+                period_s: w.period_s,
+            };
+            add(key, w, charge);
+        }
+        if let Some((group, member)) = p.group_of(&asset) {
+            let over = || DenyReason::OverGroupWindow {
+                group: group.name.clone(),
+                period_s: 0,
+                remaining: U128(0),
+            };
+            let amount = group.normalize(member, charge).ok_or_else(over)?;
+            for w in &group.windows {
+                let key = UsageKey::Group {
+                    name: group.name.clone(),
+                    period_s: w.period_s,
+                };
+                add(key, w, amount);
+            }
         }
     }
     Ok(out)
@@ -259,20 +301,22 @@ impl Pursestrings {
                 });
             }
         }
-        for (asset, charge) in charges(p, req)? {
-            let charged_rule = p.rule(&asset).expect("checked in charges");
-            for w in &charged_rule.windows {
-                let key = UsageKey::Spend {
-                    asset: asset.clone(),
-                    period_s: w.period_s,
-                };
-                let used = self.used(&key, w.period_s, now);
-                if used.saturating_add(charge) > w.limit.0 {
-                    return Err(DenyReason::OverWindow {
-                        period_s: w.period_s,
-                        remaining: U128(w.limit.0.saturating_sub(used)),
-                    });
-                }
+        for (key, w, charge) in window_charges(p, req)? {
+            let used = self.used(&key, w.period_s, now);
+            if used.saturating_add(charge) > w.limit.0 {
+                let remaining = U128(w.limit.0.saturating_sub(used));
+                let period_s = w.period_s;
+                return Err(match key {
+                    UsageKey::Group { name, .. } => DenyReason::OverGroupWindow {
+                        group: name,
+                        period_s,
+                        remaining,
+                    },
+                    _ => DenyReason::OverWindow {
+                        period_s,
+                        remaining,
+                    },
+                });
             }
         }
         let fee = fee_cost(&req.asset);
@@ -341,15 +385,8 @@ impl Pursestrings {
                 1,
             ));
         }
-        for (asset, charge) in charges(&p, req).expect("checked in evaluate") {
-            let rule = p.rule(&asset).expect("checked in charges");
-            for w in &rule.windows {
-                let key = UsageKey::Spend {
-                    asset: asset.clone(),
-                    period_s: w.period_s,
-                };
-                reservations.push(self.reserve(key, w.period_s, now, charge));
-            }
+        for (key, w, charge) in window_charges(&p, req).expect("checked in evaluate") {
+            reservations.push(self.reserve(key, w.period_s, now, charge));
         }
         let fee = fee_cost(&req.asset);
         if fee > 0 {
@@ -360,7 +397,7 @@ impl Pursestrings {
         self.idempotency
             .insert(idempotency_key(agent, &req.idempotency_key), req_id);
 
-        // Until a screener key is registered (Phase 7), a risk check falls back to the owner.
+        // There's no screener key to check verdicts against yet, so a risk check goes to the owner.
         let (status, expires_at, decision) = match route {
             Route::Execute => (
                 RequestStatus::Executing,
@@ -534,6 +571,51 @@ mod tests {
             account: "shop.near".parse().unwrap(),
         });
         p
+    }
+
+    #[test]
+    fn a_budget_group_is_shared_across_assets() {
+        let mut p = with_shop(base_policy());
+        let bridged = Asset::Nep141 {
+            token: "usdc-18.test.near".parse().unwrap(),
+        };
+        let mut rule = p.assets[0].clone();
+        rule.asset = bridged.clone();
+        rule.cosign_above = None;
+        rule.per_tx_cap = U128(10u128.pow(20));
+        rule.windows[0].limit = U128(10u128.pow(20));
+        p.assets[0].cosign_above = None;
+        p.assets.push(rule);
+        let member = |asset: Asset, decimals| crate::policy::GroupMember { asset, decimals };
+        p.groups.push(crate::policy::BudgetGroup {
+            name: "usd".into(),
+            decimals: 6,
+            members: vec![member(usdc(), 6), member(bridged.clone(), 18)],
+            windows: vec![WindowLimit {
+                period_s: 86_400,
+                limit: U128(80),
+            }],
+        });
+        let mut c = contract(p);
+        assert!(matches!(
+            c.request_spend(pay_usdc(50, "a")),
+            Decision::Approved { .. }
+        ));
+        let mut other = pay_usdc(31 * 10u128.pow(12), "b");
+        other.asset = bridged.clone();
+        assert_eq!(
+            c.evaluate(&agent_pk(), &other, 1_000),
+            Err(DenyReason::OverGroupWindow {
+                group: "usd".into(),
+                period_s: 86_400,
+                remaining: U128(30)
+            }),
+            "31 units at 18 decimals is 31 at 6"
+        );
+        other.amount = U128(30 * 10u128.pow(12));
+        assert_eq!(c.evaluate(&agent_pk(), &other, 1_000), Ok(Route::Execute));
+        let status = c.group_status("usd".into()).unwrap();
+        assert_eq!(status[0].used, U128(50));
     }
 
     #[test]

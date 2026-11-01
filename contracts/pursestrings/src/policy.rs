@@ -10,6 +10,10 @@ pub const MAX_RECIPIENTS: usize = 64;
 pub const MAX_CHAINS: usize = 16;
 pub const MAX_MIN_RATES: usize = 16;
 pub const MAX_OPS_PER_PROPOSAL: usize = 32;
+pub const MAX_GROUPS: usize = 8;
+pub const MAX_GROUP_NAME_BYTES: usize = 32;
+/// Beyond this a decimals gap can't be rescaled in a u128.
+pub const MAX_DECIMALS: u8 = 30;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,6 +31,41 @@ pub struct AssetRule {
     /// `None` means no co-sign is required at any amount.
     pub cosign_above: Option<U128>,
     pub risk_check_above: Option<U128>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupMember {
+    pub asset: Asset,
+    pub decimals: u8,
+}
+
+/// Assets the owner declares to be the same unit, such as USDC on NEAR, on Base and inside
+/// Intents, sharing one set of windows. There's no oracle: `decimals` only rescales amounts to
+/// the group's unit, rounding up.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BudgetGroup {
+    pub name: String,
+    pub decimals: u8,
+    pub members: Vec<GroupMember>,
+    pub windows: Vec<WindowLimit>,
+}
+
+impl BudgetGroup {
+    pub fn member(&self, asset: &Asset) -> Option<&GroupMember> {
+        self.members.iter().find(|m| &m.asset == asset)
+    }
+
+    /// `amount` of a member in the group's unit, rounded up so dust can't slip under a limit.
+    pub fn normalize(&self, member: &GroupMember, amount: u128) -> Option<u128> {
+        if member.decimals >= self.decimals {
+            let d = 10u128.checked_pow(u32::from(member.decimals - self.decimals))?;
+            Some(amount.div_ceil(d))
+        } else {
+            amount.checked_mul(10u128.checked_pow(u32::from(self.decimals - member.decimals))?)
+        }
+    }
 }
 
 #[near(serializers = [borsh, json])]
@@ -86,6 +125,7 @@ pub struct Policy {
     pub fee_budget: WindowLimit,
     pub pending_ttl_s: u32,
     pub timelock_s: u32,
+    pub groups: Vec<BudgetGroup>,
 }
 
 #[near(serializers = [borsh, json])]
@@ -138,6 +178,10 @@ pub enum PolicyOp {
     Migrate {
         code_hash: Base58CryptoHash,
     },
+    SetGroup(BudgetGroup),
+    RemoveGroup {
+        name: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,13 +201,27 @@ fn threshold_tighter(new: Option<U128>, cur: Option<U128>) -> bool {
 
 fn rule_tighter(new: &AssetRule, cur: &AssetRule) -> bool {
     new.per_tx_cap.0 <= cur.per_tx_cap.0
-        && cur.windows.iter().all(|cw| {
-            new.windows
-                .iter()
-                .any(|nw| nw.period_s == cw.period_s && nw.limit.0 <= cw.limit.0)
-        })
+        && windows_tighter(&new.windows, &cur.windows)
         && threshold_tighter(new.cosign_above, cur.cosign_above)
         && threshold_tighter(new.risk_check_above, cur.risk_check_above)
+}
+
+fn windows_tighter(new: &[WindowLimit], cur: &[WindowLimit]) -> bool {
+    cur.iter().all(|cw| {
+        new.iter()
+            .any(|nw| nw.period_s == cw.period_s && nw.limit.0 <= cw.limit.0)
+    })
+}
+
+/// Adding members or windows only adds limits. Dropping a member, changing any decimals or
+/// raising a window frees budget.
+fn group_tighter(new: &BudgetGroup, cur: &BudgetGroup) -> bool {
+    new.decimals == cur.decimals
+        && cur.members.iter().all(|m| {
+            new.member(&m.asset)
+                .is_some_and(|n| n.decimals == m.decimals)
+        })
+        && windows_tighter(&new.windows, &cur.windows)
 }
 
 fn window_tighter(new: &WindowLimit, cur: &WindowLimit) -> bool {
@@ -195,6 +253,7 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
         PolicyOp::SetFeeBudget(new) => window_tighter(new, &p.fee_budget),
         PolicyOp::SetPendingTtl { seconds } => *seconds <= p.pending_ttl_s,
         PolicyOp::SetTimelock { seconds } => *seconds >= p.timelock_s,
+        PolicyOp::SetGroup(new) => p.group(&new.name).is_none_or(|cur| group_tighter(new, cur)),
         PolicyOp::RemoveAsset { .. }
         | PolicyOp::RemoveRecipient(_)
         | PolicyOp::RemoveChain { .. }
@@ -206,7 +265,8 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
         | PolicyOp::AddChain { .. }
         | PolicyOp::AddIntentKind { .. }
         | PolicyOp::Unfreeze
-        | PolicyOp::Migrate { .. } => false,
+        | PolicyOp::Migrate { .. }
+        | PolicyOp::RemoveGroup { .. } => false,
     };
     if tight {
         Effect::Tighten
@@ -262,6 +322,11 @@ pub fn apply(op: PolicyOp, p: &mut Policy) {
         PolicyOp::Unfreeze => p.frozen = false,
         // The code switch happens in `apply_migration`; the policy itself doesn't change.
         PolicyOp::Migrate { .. } => {}
+        PolicyOp::SetGroup(g) => {
+            let name = g.name.clone();
+            upsert(&mut p.groups, g, |x| x.name == name);
+        }
+        PolicyOp::RemoveGroup { name } => p.groups.retain(|x| x.name != name),
     }
 }
 
@@ -295,7 +360,18 @@ impl Policy {
             },
             pending_ttl_s: 86_400,
             timelock_s: 86_400,
+            groups: Vec::new(),
         }
+    }
+
+    pub fn group(&self, name: &str) -> Option<&BudgetGroup> {
+        self.groups.iter().find(|g| g.name == name)
+    }
+
+    pub fn group_of(&self, asset: &Asset) -> Option<(&BudgetGroup, &GroupMember)> {
+        self.groups
+            .iter()
+            .find_map(|g| g.member(asset).map(|m| (g, m)))
     }
 
     pub fn rule(&self, asset: &Asset) -> Option<&AssetRule> {
@@ -316,6 +392,33 @@ impl Policy {
     }
 
     pub fn assert_valid(&self) {
+        require!(self.groups.len() <= MAX_GROUPS, "too many groups");
+        require!(
+            all_unique(&self.groups, |g| g.name.clone()),
+            "duplicate group"
+        );
+        let members = || self.groups.iter().flat_map(|g| g.members.iter());
+        require!(
+            members().count() <= MAX_ASSETS
+                && all_unique(&members().collect::<Vec<_>>(), |m| m.asset.clone()),
+            "an asset can be in one group"
+        );
+        for g in &self.groups {
+            require!(
+                !g.name.is_empty() && g.name.len() <= MAX_GROUP_NAME_BYTES,
+                "group name must be 1..=32 bytes"
+            );
+            require!(
+                g.decimals <= MAX_DECIMALS && g.members.iter().all(|m| m.decimals <= MAX_DECIMALS),
+                "decimals must be <= 30"
+            );
+            require!(g.windows.len() <= MAX_WINDOWS_PER_ASSET, "too many windows");
+            require!(
+                all_unique(&g.windows, |w| w.period_s)
+                    && g.windows.iter().all(|w| period_ok(w.period_s)),
+                "group windows: unique periods, multiples of 24 s"
+            );
+        }
         require!(self.assets.len() <= MAX_ASSETS, "too many assets");
         require!(
             all_unique(&self.assets, |r| r.asset.clone()),
@@ -452,6 +555,7 @@ pub mod tests {
             },
             pending_ttl_s: 3_600,
             timelock_s: 86_400,
+            groups: vec![],
         }
     }
 
@@ -706,6 +810,85 @@ pub mod tests {
                 den: U128(10u128.pow(30))
             }
         ));
+    }
+
+    fn usd(members: &[(Asset, u8)], limit: u128) -> BudgetGroup {
+        BudgetGroup {
+            name: "usd".into(),
+            decimals: 6,
+            members: members
+                .iter()
+                .map(|(asset, decimals)| GroupMember {
+                    asset: asset.clone(),
+                    decimals: *decimals,
+                })
+                .collect(),
+            windows: vec![WindowLimit {
+                period_s: 86_400,
+                limit: U128(limit),
+            }],
+        }
+    }
+
+    #[test]
+    fn group_ops() {
+        let mut p = base_policy();
+        let base_usdc = Asset::Evm {
+            chain_id: 84532,
+            token: None,
+        };
+        let g = usd(&[(usdc(), 6)], 100);
+        assert_eq!(
+            classify(&PolicyOp::SetGroup(g.clone()), &p),
+            Effect::Tighten
+        );
+        apply(PolicyOp::SetGroup(g), &mut p);
+        let wider = usd(&[(usdc(), 6), (base_usdc.clone(), 6)], 100);
+        assert_eq!(classify(&PolicyOp::SetGroup(wider), &p), Effect::Tighten);
+        assert_eq!(
+            classify(&PolicyOp::SetGroup(usd(&[(usdc(), 6)], 101)), &p),
+            Effect::Loosen
+        );
+        assert_eq!(
+            classify(&PolicyOp::SetGroup(usd(&[(base_usdc, 6)], 50)), &p),
+            Effect::Loosen,
+            "dropping a member frees it"
+        );
+        assert_eq!(
+            classify(&PolicyOp::SetGroup(usd(&[(usdc(), 9)], 100)), &p),
+            Effect::Loosen,
+            "more decimals shrinks every charge"
+        );
+        assert_eq!(
+            classify(&PolicyOp::RemoveGroup { name: "usd".into() }, &p),
+            Effect::Loosen
+        );
+    }
+
+    #[test]
+    fn group_rescales_rounding_up() {
+        let g = usd(&[], 0);
+        let m = |decimals| GroupMember {
+            asset: usdc(),
+            decimals,
+        };
+        assert_eq!(g.normalize(&m(6), 40_000_000), Some(40_000_000));
+        assert_eq!(g.normalize(&m(18), 1), Some(1));
+        assert_eq!(g.normalize(&m(18), 10u128.pow(12)), Some(1));
+        assert_eq!(g.normalize(&m(18), 10u128.pow(12) + 1), Some(2));
+        assert_eq!(g.normalize(&m(2), 5), Some(50_000));
+        assert_eq!(g.normalize(&m(0), u128::MAX), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "an asset can be in one group")]
+    fn rejects_asset_in_two_groups() {
+        let mut p = base_policy();
+        p.groups.push(usd(&[(usdc(), 6)], 1));
+        let mut other = usd(&[(usdc(), 6)], 1);
+        other.name = "other".into();
+        p.groups.push(other);
+        p.assert_valid();
     }
 
     #[test]

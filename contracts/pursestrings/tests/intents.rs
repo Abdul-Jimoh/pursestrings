@@ -30,10 +30,12 @@ fn intents_policy(shop: &AccountId) -> Value {
             "risk_check_above": null
         })
     };
+    let mut ft = rule(TOK_A);
+    ft["asset"] = json!({ "Nep141": { "token": "tok-a.sandbox" } });
     p["assets"]
         .as_array_mut()
         .unwrap()
-        .extend([rule(TOK_A), rule(TOK_B)]);
+        .extend([rule(TOK_A), rule(TOK_B), ft]);
     p["recipients"].as_array_mut().unwrap().extend([
         json!({ "Intents": { "account": shop } }),
         json!({ "Withdraw": { "receiver": shop, "memo": null } }),
@@ -237,7 +239,9 @@ fn spend(token: &str, amount: u128, dest: Value, key: &str) -> Value {
 }
 
 fn req_id(decision: &Value) -> u64 {
-    decision["Approved"]["req_id"].as_u64().expect("approved")
+    decision["Approved"]["req_id"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("not approved: {decision}"))
 }
 
 #[tokio::test]
@@ -498,5 +502,76 @@ async fn owner_withdraws_only_to_itself_even_while_frozen() -> TestResult {
     env.owner_call("withdraw", inside).await?.assert_success();
     assert_eq!(s.mt_balance(owner, TOK_A).await?, 50);
     assert_eq!(s.mt_balance(purse, TOK_A).await?, 250);
+    Ok(())
+}
+
+#[tokio::test]
+async fn one_group_budget_spans_near_and_intents() -> TestResult {
+    let s = Intents::new().await?;
+    let (env, purse, owner, shop) = (&s.env, &s.env.purse, &s.env.owner, &s.env.shop);
+    let tok_a: AccountId = "tok-a.sandbox".parse()?;
+    s.call(&tok_a, owner, "register", json!({ "account_id": purse }), 0)
+        .await?
+        .assert_success();
+    s.call(
+        &tok_a,
+        owner,
+        "ft_transfer",
+        json!({ "receiver_id": purse, "amount": "100" }),
+        1,
+    )
+    .await?
+    .assert_success();
+    let group = json!({ "SetGroup": {
+        "name": "tok-a",
+        "decimals": 0,
+        "members": [
+            { "asset": { "Nep141": { "token": tok_a } }, "decimals": 0 },
+            { "asset": { "Intents": { "token": TOK_A } }, "decimals": 0 }
+        ],
+        "windows": [{ "period_s": 86_400, "limit": "60" }]
+    }});
+    let queued: Option<u64> = env
+        .owner_call("propose", json!({ "ops": [group] }))
+        .await?
+        .assert_success()
+        .json()?;
+    assert_eq!(
+        queued, None,
+        "a new group only adds limits, so it applies now"
+    );
+
+    let on_near = json!({
+        "asset": { "Nep141": { "token": tok_a } },
+        "amount": "20",
+        "dest": { "Near": { "account": shop } },
+        "purpose": "test",
+        "idempotency_key": "n1"
+    });
+    let d = env.spend(on_near).await?;
+    assert_eq!(s.request(req_id(&d)).await?["status"], "Done");
+    let transfer = |amount: u128, key: &str| {
+        spend(
+            TOK_A,
+            amount,
+            json!({ "Transfer": { "receiver": shop } }),
+            key,
+        )
+    };
+    let d = env.spend(transfer(40, "i1")).await?;
+    assert_eq!(s.request(req_id(&d)).await?["status"], "Done");
+
+    let d = env.spend(transfer(1, "i2")).await?;
+    assert_eq!(
+        deny_reason(&d),
+        json!({ "OverGroupWindow": { "group": "tok-a", "period_s": 86_400, "remaining": "0" } })
+    );
+    let status: Vec<Value> = env.view("group_status", json!({ "name": "tok-a" })).await?;
+    assert_eq!(status[0]["used"], "60");
+    assert_eq!(
+        s.used(TOK_A).await?,
+        40,
+        "the asset's own window counts only its own spends"
+    );
     Ok(())
 }
