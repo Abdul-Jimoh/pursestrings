@@ -18,3 +18,4 @@ coverage/
 
 .devnet/
 apps/range/data/
+apps/web/out/

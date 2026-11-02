@@ -1,0 +1,27 @@
+{
+  "name": "@pursestrings/web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "pursestrings.site: landing page, the Range and the owner dashboard",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gsap/react": "2.1.2",
+    "gsap": "3.15.0",
+    "lenis": "1.3.27",
+    "next": "16.4.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "4.3.3"
+  }
+}
