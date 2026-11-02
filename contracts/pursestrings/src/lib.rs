@@ -18,6 +18,9 @@ use crate::policy::{MAX_OPS_PER_PROPOSAL, Policy, PolicyOp, WindowLimit, apply};
 use crate::ring::Ring;
 use crate::types::{Asset, Request, UsageKey};
 
+/// The most request ids one `recent_requests` call scans, so a view stays well inside its gas.
+const MAX_PAGE: u32 = 100;
+
 #[derive(BorshStorageKey)]
 #[near]
 enum StorageKey {
@@ -208,6 +211,21 @@ impl Pursestrings {
         self.proposals
             .iter()
             .map(|(k, v)| (*k, v.clone()))
+            .collect()
+    }
+
+    pub fn next_req_id(&self) -> u64 {
+        self.next_req_id
+    }
+
+    /// Request ids in `[before - limit, before)`, newest first, skipping pruned ones. `before`
+    /// defaults to `next_req_id`; page back by passing the previous `before - limit`.
+    pub fn recent_requests(&self, before: Option<u64>, limit: u32) -> Vec<(u64, Request)> {
+        let end = before.unwrap_or(self.next_req_id).min(self.next_req_id);
+        let start = end.saturating_sub(u64::from(limit.min(MAX_PAGE)));
+        (start..end)
+            .rev()
+            .filter_map(|id| self.requests.get(&id).map(|r| (id, r.clone())))
             .collect()
     }
 

@@ -669,6 +669,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn recent_requests_page_newest_first_past_pruned_ids() {
+        let mut c = contract(with_shop(base_policy()));
+        for k in ["a", "b", "c"] {
+            c.request_spend(pay_usdc(41, k));
+        }
+        c.requests.remove(&1);
+        let ids = |v: Vec<(u64, crate::types::Request)>| {
+            v.into_iter().map(|(id, _)| id).collect::<Vec<_>>()
+        };
+        assert_eq!(c.next_req_id(), 3);
+        assert_eq!(ids(c.recent_requests(None, 10)), [2, 0]);
+        assert_eq!(ids(c.recent_requests(None, 2)), [2]);
+        assert_eq!(ids(c.recent_requests(Some(1), 10)), [0]);
+        assert_eq!(c.recent_requests(None, u32::MAX).len(), 2);
+    }
+
     fn swap(amount: u128, min_out: u128) -> SpendRequest {
         SpendRequest {
             asset: Asset::Intents {

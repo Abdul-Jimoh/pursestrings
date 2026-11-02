@@ -79,6 +79,16 @@ export class Pursestrings {
   request(reqId: number) {
     return this.view<Request | null>("request", { req_id: reqId });
   }
+  nextReqId() {
+    return this.view<number>("next_req_id");
+  }
+  /** Newest first, ids `[before - limit, before)`; pruned ids are skipped. */
+  recentRequests(limit = 20, before?: number) {
+    return this.view<[number, Request][]>("recent_requests", {
+      limit,
+      ...(before === undefined ? {} : { before }),
+    });
+  }
   budgetStatus(asset: Asset) {
     return this.view<BudgetStatus | null>("budget_status", { asset });
   }
