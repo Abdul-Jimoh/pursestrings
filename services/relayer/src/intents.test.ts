@@ -37,7 +37,7 @@ describe("solver relay", () => {
         defuse_asset_identifier_in: "nep141:wrap.near",
         defuse_asset_identifier_out: "nep141:usdc.near",
         exact_amount_in: "100",
-        min_deadline_ms: 60_000,
+        min_deadline_ms: 20_000,
       },
     ]);
     expect(calls[0]?.headers["X-API-Key"]).toBe("jwt");

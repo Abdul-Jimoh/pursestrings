@@ -55,6 +55,7 @@ function relayCall<T>(relay: RelayConfig, method: string, params: unknown, fetch
 /**
  * Quotes for selling exactly `amountIn`. A swap request must use a quote's `amount_out` as its
  * `min_out`: the contract signs that exact diff, and the solver's side has to net against it.
+ * Solvers answered 20 s requests but not the documented 60 s default (build log, Nov 2).
  */
 export function requestQuote(
   relay: RelayConfig,
@@ -62,15 +63,16 @@ export function requestQuote(
   buy: string,
   amountIn: string,
   fetchFn: Fetch = fetch,
-): Promise<Quote[]> {
-  return relayCall<Quote[]>(
+  minDeadlineMs = 20_000,
+): Promise<Quote[] | null> {
+  return relayCall<Quote[] | null>(
     relay,
     "quote",
     {
       defuse_asset_identifier_in: sell,
       defuse_asset_identifier_out: buy,
       exact_amount_in: amountIn,
-      min_deadline_ms: 60_000,
+      min_deadline_ms: minDeadlineMs,
     },
     fetchFn,
   );
