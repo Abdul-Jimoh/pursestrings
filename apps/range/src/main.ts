@@ -36,7 +36,7 @@ const pricing = {
   outPerM: Number(env("RANGE_PRICE_OUT", "0.50")),
 };
 const limits = new Limits({
-  dailyUsd: Number(env("RANGE_DAILY_USD", "1")),
+  dailyUsd: Number(env("RANGE_DAILY_USD", "0.5")),
   perHour: Number(env("RANGE_PER_HOUR", "5")),
 });
 const store = new Store(env("RANGE_DATA", join(import.meta.dirname, "../data/attacks.jsonl")));
