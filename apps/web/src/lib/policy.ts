@@ -49,8 +49,19 @@ export function amount(raw: string, decimals: number): string {
   return v >= 1 ? v.toLocaleString("en-US", { maximumFractionDigits: 2 }) : v.toPrecision(2);
 }
 
+const plural = (n: number, unit: string) => (n === 1 ? unit : `${n} ${unit}s`);
+
+/** "day", "2 days", "hour": reads as "2 per day" or "waits 1 hour" after the caller's words. */
 const span = (s: number) =>
-  s % 86_400 === 0 ? `${s / 86_400} d` : s % 3_600 === 0 ? `${s / 3_600} h` : `${s} s`;
+  s % 86_400 === 0
+    ? plural(s / 86_400, "day")
+    : s % 3_600 === 0
+      ? plural(s / 3_600, "hour")
+      : s % 60 === 0
+        ? plural(s / 60, "minute")
+        : plural(s, "second");
+
+const withCount = (unit: string) => (/^\d/.test(unit) ? unit : `1 ${unit}`);
 
 export interface PolicyView {
   frozen: boolean;
@@ -75,7 +86,7 @@ export async function loadPolicy(account = RANGE_ACCOUNT): Promise<PolicyView> {
         name,
         perTx: amount(r.per_tx_cap, decimals),
         windows: r.windows
-          .map((w) => `${amount(w.limit, decimals)} / ${span(w.period_s)}`)
+          .map((w) => `${amount(w.limit, decimals)} per ${span(w.period_s)}`)
           .join(", "),
         cosign: r.cosign_above ? amount(r.cosign_above, decimals) : null,
       };
@@ -84,7 +95,7 @@ export async function loadPolicy(account = RANGE_ACCOUNT): Promise<PolicyView> {
       const inner = Object.values(r)[0] ?? {};
       return String(inner.account ?? inner.address ?? inner.receiver ?? "");
     }),
-    velocity: p.velocity ? `${p.velocity.max} / ${span(p.velocity.period_s)}` : null,
-    timelock: span(p.timelock_s),
+    velocity: p.velocity ? `${p.velocity.max} payments per ${span(p.velocity.period_s)}` : null,
+    timelock: withCount(span(p.timelock_s)),
   };
 }

@@ -112,9 +112,9 @@ export function OneBudget() {
           <h2 className="display text-[clamp(2.5rem,6.4vw,6.8rem)]">
             $150 a day.
             <br />
-            <span className="serif normal-case">Wherever</span> it&rsquo;s spent.
+            <span className="text-string">Wherever</span> it&rsquo;s spent.
           </h2>
-          <p className="mono text-[0.92rem] leading-relaxed text-ink/75">
+          <p className="text-[1.05rem] leading-relaxed text-ink/75">
             The owner declares USDC on NEAR, on Base and inside NEAR Intents to be the same unit.
             One rolling window covers all three, with no price oracle. These are the demo&rsquo;s
             real numbers.

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { gsap, reducedMotion, SplitText, useGSAP } from "@/lib/gsap";
+import { gsap, reducedMotion, revealLines, type SplitText, useGSAP } from "@/lib/gsap";
 
 const TANGLED =
   "M610 -20C620 120 380 160 330 300C280 440 520 520 600 420C680 320 560 200 460 260C340 330 300 560 470 600C640 640 700 480 610 430C520 380 400 520 450 650C480 730 520 760 520 820";
@@ -14,19 +14,25 @@ export function Hero() {
   const [taut, setTaut] = useState(false);
 
   useGSAP(
-    () => {
-      const motion = !reducedMotion();
-      const split = SplitText.create(".hero-line", { type: "words,chars", mask: "lines" });
-      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
-      if (motion) {
-        tl.from(split.chars, { yPercent: 115, duration: 1.2, stagger: 0.018 })
+    (_, contextSafe) => {
+      if (reducedMotion()) return;
+      let split: SplitText | undefined;
+      const start = contextSafe?.(() => {
+        const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+        split = revealLines(".hero-line", { stagger: 0.11, duration: 1.3 });
+        tl.set(".hero-svg", { visibility: "visible" })
           .from(".hero-string", { drawSVG: "0%", duration: 2.2, ease: "power2.inOut" }, 0.2)
           .from(
             ".hero-ring",
             { scale: 0, transformOrigin: "50% 50%", duration: 0.8, ease: "back.out(3)" },
             1.9,
           )
-          .from(".hero-fade", { y: 24, autoAlpha: 0, duration: 1, stagger: 0.08 }, 0.9);
+          .fromTo(
+            ".hero-fade",
+            { y: 24, autoAlpha: 0 },
+            { y: 0, autoAlpha: 1, duration: 1, stagger: 0.08 },
+            0.7,
+          );
         gsap.to(".hero-content", {
           yPercent: -18,
           autoAlpha: 0.2,
@@ -38,8 +44,9 @@ export function Hero() {
             scrub: true,
           },
         });
-      }
-      return () => split.revert();
+      });
+      document.fonts.ready.then(() => start?.());
+      return () => split?.revert();
     },
     { scope: root },
   );
@@ -87,7 +94,7 @@ export function Hero() {
   return (
     <section ref={root} className="surface-ink grain relative min-h-[100svh] overflow-hidden">
       <svg
-        className="pointer-events-none absolute right-[-38%] top-0 h-[100svh] w-auto opacity-50 md:right-[-6%] md:opacity-100"
+        className="hero-svg reveal pointer-events-none absolute right-[-38%] top-0 h-[100svh] w-auto opacity-50 md:right-[-6%] md:opacity-100"
         viewBox="0 0 800 960"
         fill="none"
         aria-hidden="true"
@@ -115,22 +122,22 @@ export function Hero() {
       </svg>
 
       <div className="hero-content relative z-10 flex min-h-[100svh] min-w-0 flex-col justify-end px-5 pb-10 pt-32 md:px-10 md:pb-14">
-        <p className="eyebrow hero-fade mb-8 text-dim-ink">
+        <p className="eyebrow hero-fade reveal mb-8 max-w-[22rem] text-dim-ink md:max-w-none">
           On-chain spending policy for AI agents · NEAR · EVM · Intents
         </p>
-        <h1 className="display min-w-0 text-[clamp(2.75rem,7.4vw,9.25rem)]">
-          <span className="hero-line block">Your agent</span>
-          <span className="hero-line block md:pl-[4vw]">holds the purse.</span>
-          <span className="hero-line block">You hold</span>
-          <span className="hero-line block text-string md:pl-[4vw]">the strings.</span>
+        <h1 className="display min-w-0 text-[clamp(2.25rem,10.5vw,4.75rem)] md:text-[clamp(4rem,7.4vw,9.25rem)]">
+          <span className="hero-line reveal block">Your agent</span>
+          <span className="hero-line reveal block md:pl-[4vw]">holds the purse.</span>
+          <span className="hero-line reveal block">You hold</span>
+          <span className="hero-line reveal block text-string md:pl-[4vw]">the strings.</span>
         </h1>
         <div className="mt-10 grid gap-8 md:mt-14 md:grid-cols-[minmax(0,34rem)_1fr] md:items-end">
-          <p className="hero-fade mono max-w-[34rem] text-[0.95rem] leading-relaxed text-paper/80">
+          <p className="hero-fade reveal max-w-[34rem] text-[1.05rem] leading-relaxed text-paper/80">
             One on-chain policy for every chain your agent touches: NEAR, every EVM chain through
             Chain Signatures, and NEAR Intents. The agent can only ask. The contract builds and
             checks every payment itself.
           </p>
-          <div className="hero-fade flex flex-wrap items-center gap-6 md:justify-end">
+          <div className="hero-fade reveal flex flex-wrap items-center gap-6 md:justify-end">
             <Link
               href="/range"
               className="group inline-flex items-center gap-3 border-b-2 border-paper pb-1 text-[1.35rem] font-extrabold uppercase tracking-[-0.02em]"

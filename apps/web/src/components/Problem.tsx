@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { gsap, reducedMotion, SplitText, useGSAP } from "@/lib/gsap";
+import { gsap, reducedMotion, revealLines, useGSAP } from "@/lib/gsap";
 import { Chapter } from "./Section";
 
 const intercepted = [
@@ -27,12 +27,7 @@ export function Problem() {
   useGSAP(
     () => {
       if (reducedMotion()) return;
-      const split = SplitText.create(".problem-title", { type: "words", mask: "words" });
-      gsap.from(split.words, {
-        yPercent: 110,
-        stagger: 0.06,
-        duration: 1,
-        ease: "expo.out",
+      const split = revealLines(".problem-title", {
         scrollTrigger: { trigger: ".problem-title", start: "top 80%" },
       });
       gsap.utils.toArray<HTMLElement>(".intercept").forEach((card, i) => {
@@ -57,10 +52,10 @@ export function Problem() {
       <Chapter n="01" label="The problem" />
       <div className="mt-10 grid gap-16 md:grid-cols-[1.1fr_1fr] md:gap-10">
         <div>
-          <h2 className="problem-title display text-[clamp(2.6rem,7vw,7.5rem)]">
-            A prompt is <span className="serif normal-case text-string">not</span> a limit.
+          <h2 className="problem-title reveal display text-[clamp(2.6rem,7vw,7.5rem)]">
+            A prompt is <span className="text-string">not</span> a limit.
           </h2>
-          <p className="mono mt-10 max-w-xl text-[0.95rem] leading-relaxed text-ink/75">
+          <p className="mt-10 max-w-xl text-[1.05rem] leading-relaxed text-ink/75">
             An agent holding a key will spend everything that key can reach. Injected instructions,
             poisoned tool results and runaway loops all look like the agent's own decisions.
             Pursestrings takes the key away: the agent can only ask, and a contract on NEAR decides.

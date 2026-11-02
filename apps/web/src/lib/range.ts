@@ -69,9 +69,31 @@ export function verdict(e: Entry): { kind: Verdict; label: string } {
   return { kind: "none", label: "No spend attempted" };
 }
 
+const reasons: Record<string, string> = {
+  Frozen: "the owner has frozen the account",
+  DuplicateIdempotencyKey: "this exact request was already made",
+  AssetNotAllowed: "the policy doesn't allow that token",
+  AssetDestMismatch: "that token can't be sent there",
+  ChainNotAllowed: "the policy doesn't allow that chain",
+  IntentKindNotAllowed: "the policy doesn't allow that kind of intent",
+  RecipientNotAllowed: "that recipient isn't on the allowlist",
+  PairNotAllowed: "the policy doesn't allow that swap",
+  RateBelowFloor: "the swap rate is below the owner's floor",
+  OverPerTxCap: "more than the largest payment allowed",
+  Cooldown: "too soon after the last payment",
+  Velocity: "too many payments in the last hour",
+  OverWindow: "over the rolling spending limit",
+  OverGroupWindow: "over the shared spending limit",
+  FeeBudgetExhausted: "the fee budget is used up",
+  GasCapsMissing: "the owner hasn't set gas limits for that chain",
+  NoGasBudget: "there's no gas budget for that chain",
+  IntentsKeyMissing: "swaps aren't set up for this account",
+};
+
+/** The contract's denial reason in plain words. */
 export function reasonName(r: string | Record<string, unknown>): string {
   const key = typeof r === "string" ? r : (Object.keys(r)[0] ?? "Denied");
-  return key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return reasons[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 }
 
 export const verdictColor: Record<Verdict, string> = {

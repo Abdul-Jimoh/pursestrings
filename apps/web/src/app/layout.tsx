@@ -25,7 +25,13 @@ export const viewport: Viewport = { themeColor: "#0b0b0a" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${archivo.variable} ${instrument.variable} ${jetbrains.variable}`}>
-      <body>
+      <head>
+        <noscript>
+          <style>{".reveal{visibility:visible}"}</style>
+        </noscript>
+      </head>
+      {/* Extensions such as ColorZilla write attributes onto <body> before React hydrates. */}
+      <body suppressHydrationWarning>
         <SmoothScroll />
         <Nav />
         {children}

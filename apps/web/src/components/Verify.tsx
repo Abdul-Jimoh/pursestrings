@@ -84,7 +84,7 @@ export function Verify() {
     >
       <Chapter n="06" label="Verify it yourself" />
       <h2 className="display mt-8 text-[clamp(2.5rem,6.4vw,6.8rem)]">
-        Don&rsquo;t take <span className="serif normal-case">our</span> word.
+        Don&rsquo;t take <span className="text-string">our</span> word.
       </h2>
       <ul className="proofs mt-14 border-t-2 border-ink">
         {proofs.map((p, i) => (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Footer } from "@/components/Footer";
 import { RangeApp } from "@/components/range/RangeApp";
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export default function RangePage() {
   return (
     <main>
       <RangeApp />
+      <Footer />
     </main>
   );
 }

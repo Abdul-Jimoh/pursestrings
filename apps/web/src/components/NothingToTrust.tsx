@@ -76,13 +76,13 @@ export function NothingToTrust() {
     <section ref={root} className="surface-ink grain relative px-5 py-24 md:px-10 md:py-36">
       <Chapter n="04" label="Nothing to trust" dark />
       <h2 className="display mt-8 max-w-5xl text-[clamp(2.5rem,6.4vw,6.8rem)]">
-        No server <span className="serif normal-case text-paper/60">in the</span> middle.
+        No server <span className="text-paper/45">in the</span> middle.
       </h2>
-      <div className="mt-16 grid border-t border-paper/15 md:grid-cols-3">
+      <div className="mt-16 grid border-y border-paper/15 md:grid-cols-3">
         {pillars.map((p) => (
           <article
             key={p.n}
-            className="pillar border-b border-paper/15 py-10 md:border-b-0 md:border-r md:px-8 md:py-14 md:first:pl-0 md:last:border-r-0"
+            className="pillar border-b border-paper/15 py-10 last:border-b-0 md:border-b-0 md:border-r md:px-8 md:py-14 md:first:pl-0 md:last:border-r-0 md:last:pr-0"
           >
             <div className="flex items-start justify-between">
               <span className="display text-[3.2rem] text-paper/90">{p.n}</span>

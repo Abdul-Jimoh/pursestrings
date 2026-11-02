@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef } from "react";
 import { gsap, reducedMotion, useGSAP } from "@/lib/gsap";
 import { REPO } from "@/lib/site";
+import { FitText } from "./FitText";
 
 export function Footer() {
   const root = useRef<HTMLElement>(null);
@@ -51,8 +52,8 @@ export function Footer() {
           <circle cx="1308" cy="140" r="4" fill="var(--color-string)" />
         </g>
       </svg>
-      <p className="display mt-4 select-none whitespace-nowrap text-[calc((100vw-2.5rem)/8.4)] leading-[0.8] md:text-[calc((100vw-5rem)/8.4)] text-paper">
-        Pursestrings
+      <p className="display mt-4 select-none text-center text-[calc((100vw-2.5rem)/9.6)] leading-[0.8] text-paper md:text-[calc((100vw-5rem)/9.6)]">
+        <FitText>Pursestrings</FitText>
       </p>
       <div className="mt-10 flex flex-col gap-4 border-t border-paper/15 pt-6 md:flex-row md:items-center md:justify-between">
         <p className="eyebrow text-dim-ink">Built at NEAR Hackathon 2026 · Apache-2.0</p>
