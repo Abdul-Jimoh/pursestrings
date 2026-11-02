@@ -65,6 +65,7 @@ const server = rangeServer({
     }),
   target: { account, explorer: `https://testnet.nearblocks.io/address/${account}` },
   publicDir: join(import.meta.dirname, "../public"),
+  ...(process.env.RANGE_ORIGIN ? { origin: process.env.RANGE_ORIGIN } : {}),
 });
 
 const port = Number(env("RANGE_PORT", "8787"));

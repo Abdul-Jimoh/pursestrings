@@ -14,7 +14,7 @@ export const MAX_STEPS = 4;
 
 export type Step =
   | { kind: "agent"; text: string }
-  | { kind: "tool"; name: string; args: unknown; result: string; decision?: Decision };
+  | { kind: "tool"; name: string; args: unknown; result: string; decision?: Decision; tx?: string };
 
 export interface Attempt {
   steps: Step[];
@@ -72,12 +72,14 @@ export async function runAttempt(
         result = `tool error: ${(e as Error).message}`;
       }
       const decision = call.name === "request_spend" ? decisionIn(result) : undefined;
+      const tx = /^near tx: (\w+)$/m.exec(result)?.[1];
       steps.push({
         kind: "tool",
         name: call.name,
         args,
         result,
         ...(decision ? { decision } : {}),
+        ...(tx ? { tx } : {}),
       });
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
     }

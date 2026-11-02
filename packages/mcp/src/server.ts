@@ -62,7 +62,9 @@ export function createServer({ purse, agent }: Wallet): McpServer {
     async (args) => {
       const res = await agent.requestSpend(args as SpendRequest);
       if (!res.value) return { ...text(`rejected before a decision: ${res.error}`), isError: true };
-      return text(`${describeDecision(res.value as Decision)}\n${JSON.stringify(res.value)}`);
+      return text(
+        `${describeDecision(res.value as Decision)}\n${JSON.stringify(res.value)}\nnear tx: ${res.txHash}`,
+      );
     },
   );
 
