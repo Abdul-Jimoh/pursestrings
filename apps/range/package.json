@@ -1,0 +1,19 @@
+{
+  "name": "@pursestrings/range",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Pursestrings Range: a public page where anyone can try to talk a deliberately weak agent out of the policy",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types --no-warnings src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@pursestrings/mcp": "workspace:*",
+    "@pursestrings/sdk": "workspace:*",
+    "near-api-js": "7.4.0"
+  }
+}

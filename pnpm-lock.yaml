@@ -33,6 +33,21 @@ importers:
         specifier: 7.4.0
         version: 7.4.0
 
+  apps/range:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.2
+        version: 1.32.2(zod@4.6.7)
+      '@pursestrings/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@pursestrings/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      near-api-js:
+        specifier: 7.4.0
+        version: 7.4.0
+
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':

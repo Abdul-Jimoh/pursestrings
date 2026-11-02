@@ -17,5 +17,8 @@
     "@modelcontextprotocol/sdk": "1.32.2",
     "@pursestrings/sdk": "workspace:*",
     "zod": "4.6.7"
+  },
+  "exports": {
+    ".": "./src/server.ts"
   }
 }
