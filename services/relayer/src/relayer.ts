@@ -15,6 +15,13 @@ export interface Prover {
   marginS: number;
 }
 
+export interface ProofCall<T> {
+  ok: boolean;
+  value?: T | undefined;
+  txHash?: string;
+  error?: string;
+}
+
 export interface Config {
   nearRpc: string;
   account: string;
@@ -45,6 +52,8 @@ export interface Report {
   receipt: ReceiptStatus;
   /** Set once a prover has asked the contract to settle the request. */
   proof?: "confirmed" | "released" | "not yet" | "failed";
+  /** The NEAR transaction that carried the proof. */
+  proof_tx?: string;
   error?: string;
 }
 
