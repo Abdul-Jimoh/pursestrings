@@ -33,8 +33,8 @@ export interface RangeDeps {
   /** Shown to visitors: the account under attack and where to see it. */
   target: { account: string; explorer: string };
   publicDir?: string;
-  /** Allowed browser origin for the API, such as https://pursestrings.site. */
-  origin?: string;
+  /** Browser origins allowed to call the API, such as https://pursestrings.site; any if unset. */
+  origins?: readonly string[];
   now?: () => number;
 }
 
@@ -69,7 +69,12 @@ export function rangeServer(d: RangeDeps) {
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://range");
-    res.setHeader("access-control-allow-origin", d.origin ?? "*");
+    const origin = req.headers.origin;
+    if (!d.origins) res.setHeader("access-control-allow-origin", "*");
+    else if (origin && d.origins.includes(origin)) {
+      res.setHeader("access-control-allow-origin", origin);
+      res.setHeader("vary", "origin");
+    }
     res.setHeader("access-control-allow-headers", "content-type, authorization");
     res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
     if (req.method === "OPTIONS") {

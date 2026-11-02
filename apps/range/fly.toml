@@ -1,0 +1,39 @@
+# Deploy from the repo root: fly deploy . --config apps/range/fly.toml --ha=false
+# Secrets (never in this file): fly secrets set RANGE_AGENT_KEY=... RANGE_MODEL_KEY=...
+app = "pursestrings-range"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NEAR_RPC = "https://rpc.testnet.near.org"
+  RANGE_ACCOUNT = "range.factory.ps-spike-1028.testnet"
+  RANGE_OURS = "ps-funder-1101.testnet,0x9d7ac751235b819991b3050d3f19e58a8e66ae03"
+  RANGE_ORIGIN = "https://pursestrings.site,https://www.pursestrings.site"
+  RANGE_DAILY_USD = "0.3"
+  RANGE_PER_HOUR = "5"
+
+# The attack log is an append-only file, so it lives on a volume.
+[[mounts]]
+  source = "range_data"
+  destination = "/data"
+
+# Rate limits, sessions and the daily cap are in memory: exactly one machine, always on.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/status"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

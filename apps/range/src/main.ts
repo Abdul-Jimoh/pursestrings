@@ -21,7 +21,10 @@ const env = (name: string, fallback: string) => process.env[name] ?? fallback;
 
 const rpc = env("NEAR_RPC", "https://rpc.testnet.near.org");
 const account = need("RANGE_ACCOUNT");
-const agentKey = JSON.parse(readFileSync(need("RANGE_AGENT_KEY_FILE"), "utf8")).private_key;
+// A hosted deploy passes the key itself as a secret; locally it's read from the credentials file.
+const agentKey =
+  process.env.RANGE_AGENT_KEY ??
+  JSON.parse(readFileSync(need("RANGE_AGENT_KEY_FILE"), "utf8")).private_key;
 const purse = new Pursestrings(rpc, account);
 
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -65,7 +68,7 @@ const server = rangeServer({
     }),
   target: { account, explorer: `https://testnet.nearblocks.io/address/${account}` },
   publicDir: join(import.meta.dirname, "../public"),
-  ...(process.env.RANGE_ORIGIN ? { origin: process.env.RANGE_ORIGIN } : {}),
+  ...(process.env.RANGE_ORIGIN ? { origins: process.env.RANGE_ORIGIN.split(",") } : {}),
 });
 
 const port = Number(env("RANGE_PORT", "8787"));

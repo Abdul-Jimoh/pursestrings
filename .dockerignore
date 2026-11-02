@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/out
+**/dist
+target
+.devnet
+.git
+.env
+.env.*
+CLAUDE.md
+CLAUDE.local.md
+.claude
+docs
+spikes
+contracts
+apps/range/data

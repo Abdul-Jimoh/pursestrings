@@ -64,7 +64,7 @@ afterEach(() => {
   for (const s of servers.splice(0)) s.close();
 });
 
-async function start(decision: unknown, perHour = 2) {
+async function start(decision: unknown, perHour = 2, origins?: string[]) {
   const dir = await import("node:fs").then((fs) =>
     fs.mkdtempSync(`${process.env.TMPDIR ?? "/tmp"}/range-`),
   );
@@ -79,6 +79,7 @@ async function start(decision: unknown, perHour = 2) {
       if (s.signature !== "good") throw new Error("bad signature");
     },
     target: { account: "range.testnet", explorer: "x" },
+    ...(origins ? { origins } : {}),
   });
   await new Promise<void>((r) => server.listen(0, r));
   servers.push(server);
@@ -107,6 +108,19 @@ async function start(decision: unknown, perHour = 2) {
 }
 
 describe("range", () => {
+  it("answers CORS only for the site's own origins", async () => {
+    const { base } = await start({ Approved: { req_id: 0 } }, 2, [
+      "https://pursestrings.site",
+      "https://www.pursestrings.site",
+    ]);
+    const from = async (origin: string) =>
+      (await fetch(`${base}/api/status`, { headers: { origin } })).headers.get(
+        "access-control-allow-origin",
+      );
+    expect(await from("https://www.pursestrings.site")).toBe("https://www.pursestrings.site");
+    expect(await from("https://evil.example")).toBeNull();
+  });
+
   it("only lets signed-in testnet accounts attack", async () => {
     const r = await start({ Denied: { reason: "RecipientNotAllowed" } });
     expect((await r.post("/api/attack", { prompt: "hi" })).status).toBe(401);
