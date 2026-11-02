@@ -35,17 +35,44 @@ export async function sendRaw(
 
 export type ReceiptStatus = "pending" | "success" | "reverted";
 
-export async function receiptStatus(
+export async function receipt(
   rpc: string,
   hash: string,
   fetchFn: Fetch = fetch,
-): Promise<ReceiptStatus> {
-  const r = await jsonRpc<{ status: string } | null>(
+): Promise<{ status: ReceiptStatus; block?: number }> {
+  const r = await jsonRpc<{ status: string; blockNumber: string } | null>(
     rpc,
     "eth_getTransactionReceipt",
     [hash],
     fetchFn,
   );
-  if (!r) return "pending";
-  return r.status === "0x1" ? "success" : "reverted";
+  if (!r) return { status: "pending" };
+  return { status: r.status === "0x1" ? "success" : "reverted", block: Number(r.blockNumber) };
+}
+
+async function blockTime(rpc: string, tag: string, fetchFn: Fetch) {
+  const b = await jsonRpc<{ number: string; timestamp: string } | null>(
+    rpc,
+    "eth_getBlockByNumber",
+    [tag, false],
+    fetchFn,
+  );
+  return b ? { number: Number(b.number), time: Number(b.timestamp) } : undefined;
+}
+
+/**
+ * Whether the MPC network will already attest to a transaction in `block`. It answers only for
+ * finalized blocks, and its nodes lag the public `finalized` head by a few minutes, so the
+ * finalized head must be at least `marginS` of chain time past the block.
+ */
+export async function provable(
+  rpc: string,
+  block: number,
+  marginS: number,
+  fetchFn: Fetch = fetch,
+): Promise<boolean> {
+  const head = await blockTime(rpc, "finalized", fetchFn);
+  if (!head || head.number < block) return false;
+  const included = await blockTime(rpc, `0x${block.toString(16)}`, fetchFn);
+  return included !== undefined && head.time - included.time >= marginS;
 }

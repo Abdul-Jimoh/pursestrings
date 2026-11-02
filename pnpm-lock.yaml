@@ -62,6 +62,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
+      '@pursestrings/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
 
 packages:
 

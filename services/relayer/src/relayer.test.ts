@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { txHash } from "./evm.ts";
-import { relayOnce } from "./relayer.ts";
+import { type Prover, relayOnce, settleSwaps } from "./relayer.ts";
 import type { Fetch } from "./rpc.ts";
 
 const RAW = "0x02f86b83014a3480";
@@ -49,7 +49,7 @@ describe("relayOnce", () => {
     const { fetch, calls } = fakeFetch({
       "near query": () => nearResult(open({ raw_tx: RAW, cancel_tx: null })),
       "base eth_sendRawTransaction": () => txHash(RAW),
-      "base eth_getTransactionReceipt": () => ({ status: "0x1" }),
+      "base eth_getTransactionReceipt": () => ({ status: "0x1", blockNumber: "0x64" }),
     });
     const reports = await relayOnce(cfg, fetch);
     expect(reports).toEqual([
@@ -87,6 +87,68 @@ describe("relayOnce", () => {
     });
     expect(await relayOnce({ ...cfg, evmRpc: {} }, fetch)).toEqual([]);
     expect(calls).toHaveLength(1);
+  });
+});
+
+function prover(calls: string[], marginS = 600): Prover {
+  const record =
+    <T>(name: string, value: T) =>
+    async (id: number) => {
+      calls.push(`${name} ${id}`);
+      return { ok: true, value };
+    };
+  return {
+    confirm: record("confirm", true),
+    release: record("release", true),
+    settle: record("settle", "Done"),
+    marginS,
+  };
+}
+
+describe("proofs", () => {
+  const chain = (finalized: number, finalizedTime: number) => ({
+    "near query": () => nearResult(open({ raw_tx: RAW, cancel_tx: null })),
+    "base eth_sendRawTransaction": () => {
+      throw new Error("already known");
+    },
+    "base eth_getTransactionReceipt": () => ({ status: "0x1", blockNumber: "0x64" }),
+    "base eth_getBlockByNumber": (params: unknown) => {
+      const [tag] = params as [string];
+      return tag === "finalized"
+        ? { number: `0x${finalized.toString(16)}`, timestamp: `0x${finalizedTime.toString(16)}` }
+        : { number: "0x64", timestamp: "0x3e8" };
+    },
+  });
+
+  it("waits until the finalized head is well past the block", async () => {
+    const calls: string[] = [];
+    const early = fakeFetch(chain(99, 5_000)).fetch;
+    expect((await relayOnce({ ...cfg, prover: prover(calls) }, early))[0]?.proof).toBe("not yet");
+    const shallow = fakeFetch(chain(150, 1_000 + 300)).fetch;
+    expect((await relayOnce({ ...cfg, prover: prover(calls) }, shallow))[0]?.proof).toBe("not yet");
+    expect(calls).toEqual([]);
+  });
+
+  it("asks the contract to confirm once the MPC network can see it", async () => {
+    const calls: string[] = [];
+    const ready = fakeFetch(chain(500, 1_000 + 700)).fetch;
+    const [report] = await relayOnce({ ...cfg, prover: prover(calls) }, ready);
+    expect(report?.proof).toBe("confirmed");
+    expect(calls).toEqual(["confirm 7"]);
+  });
+
+  it("settles only swaps past their deadline", async () => {
+    const calls: string[] = [];
+    const { fetch } = fakeFetch({
+      "near query": () =>
+        nearResult([
+          [1, { intent: { deadline_ns: 100 } }],
+          [2, { intent: { deadline_ns: 900 } }],
+        ]),
+    });
+    const settled = await settleSwaps({ ...cfg, prover: prover(calls) }, 500, fetch);
+    expect(settled).toEqual([{ req_id: 1, status: "Done" }]);
+    expect(calls).toEqual(["settle 1"]);
   });
 });
 
