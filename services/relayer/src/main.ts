@@ -15,7 +15,7 @@ function config(): Config {
     const m = /^EVM_RPC_(\d+)$/.exec(key);
     if (m?.[1] && value) evmRpc[Number(m[1])] = value;
   }
-  const nearRpc = process.env.NEAR_RPC ?? "https://rpc.testnet.near.org";
+  const nearRpc = process.env.NEAR_RPC ?? "https://test.rpc.fastnear.com";
   const cfg: Config = { nearRpc, account, evmRpc };
   const signer = process.env.NEAR_SIGNER_ACCOUNT;
   const keyFile = process.env.NEAR_SIGNER_KEY_FILE;

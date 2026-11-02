@@ -35,3 +35,40 @@ export async function signIn(nonce: { nonce: string; message: string; recipient:
   });
   return signed;
 }
+
+/** The connected account, if a wallet is already connected on this browser. */
+export async function connectedAccount(): Promise<string | null> {
+  try {
+    const { accounts } = await (await wallet()).getConnectedWallet();
+    return accounts[0]?.accountId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function connectAccount(): Promise<string> {
+  const w = await (await wallet()).connect();
+  const [account] = await w.getAccounts();
+  if (!account) throw new Error("the wallet didn't return an account");
+  return account.accountId;
+}
+
+export async function disconnect() {
+  await (await wallet()).disconnect();
+}
+
+const TGAS = 10n ** 12n;
+
+/** Owner methods take exactly 1 yoctoNEAR, so only a full-access key (a wallet prompt) can call them. */
+export async function ownerCall(contract: string, method: string, args: object, tgas = 100n) {
+  const { wallet: w } = await (await wallet()).getConnectedWallet();
+  return w.signAndSendTransaction({
+    receiverId: contract,
+    actions: [
+      {
+        type: "FunctionCall",
+        params: { methodName: method, args, gas: (tgas * TGAS).toString(), deposit: "1" },
+      },
+    ],
+  });
+}

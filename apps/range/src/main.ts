@@ -19,7 +19,7 @@ function need(name: string): string {
 
 const env = (name: string, fallback: string) => process.env[name] ?? fallback;
 
-const rpc = env("NEAR_RPC", "https://rpc.testnet.near.org");
+const rpc = env("NEAR_RPC", "https://test.rpc.fastnear.com");
 const account = need("RANGE_ACCOUNT");
 // A hosted deploy passes the key itself as a secret; locally it's read from the credentials file.
 const agentKey =

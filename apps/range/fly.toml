@@ -7,7 +7,7 @@ primary_region = "lhr"
   dockerfile = "Dockerfile"
 
 [env]
-  NEAR_RPC = "https://rpc.testnet.near.org"
+  NEAR_RPC = "https://test.rpc.fastnear.com"
   RANGE_ACCOUNT = "range.factory.ps-spike-1028.testnet"
   RANGE_OURS = "ps-funder-1101.testnet,0x9d7ac751235b819991b3050d3f19e58a8e66ae03"
   RANGE_ORIGIN = "https://pursestrings.site,https://www.pursestrings.site"
