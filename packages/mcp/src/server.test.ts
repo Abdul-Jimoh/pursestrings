@@ -51,6 +51,13 @@ describe("mcp server", () => {
     expect(JSON.stringify(res.content)).toContain("isn't on the owner's allowlist");
   });
 
+  it('unwraps a double-encoded "Near", the one shape models keep sending', async () => {
+    const seen: SpendRequest[] = [];
+    const client = await connect({ Approved: { req_id: 0 } }, seen);
+    await client.callTool({ name: "request_spend", arguments: { ...pay, asset: '"Near"' } });
+    expect(seen).toEqual([{ ...pay, asset: "Near" }]);
+  });
+
   it("refuses fields the contract would never sign", async () => {
     const seen: SpendRequest[] = [];
     const client = await connect({ Approved: { req_id: 0 } }, seen);

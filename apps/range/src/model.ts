@@ -22,6 +22,8 @@ export interface ChatTurn {
   text: string | null;
   toolCalls: ToolCall[];
   usage: { input: number; output: number };
+  /** The provider's finish_reason, such as "stop", "tool_calls" or "content_filter". */
+  finish?: string;
   /** Raw assistant message, appended back unchanged. */
   message: ChatMessage;
 }
@@ -39,6 +41,7 @@ export interface OpenAiCompatibleConfig {
 
 interface CompletionResponse {
   choices: {
+    finish_reason?: string;
     message: {
       content: string | null;
       tool_calls?: { id: string; function: { name: string; arguments: string } }[];
@@ -62,7 +65,8 @@ export function openAiCompatible(cfg: OpenAiCompatibleConfig, fetchFn = fetch): 
       });
       if (!res.ok) throw new Error(`model call failed: HTTP ${res.status} ${await res.text()}`);
       const body = (await res.json()) as CompletionResponse;
-      const msg = body.choices[0]?.message;
+      const choice = body.choices[0];
+      const msg = choice?.message;
       if (!msg) throw new Error("model returned no choices");
       return {
         text: msg.content,
@@ -75,6 +79,7 @@ export function openAiCompatible(cfg: OpenAiCompatibleConfig, fetchFn = fetch): 
           input: body.usage?.prompt_tokens ?? 0,
           output: body.usage?.completion_tokens ?? 0,
         },
+        ...(choice?.finish_reason ? { finish: choice.finish_reason } : {}),
         message: { role: "assistant", content: msg.content, tool_calls: msg.tool_calls ?? [] },
       };
     },

@@ -11,12 +11,18 @@ import {
 } from "@pursestrings/sdk";
 import { z } from "zod";
 
-const asset = z.union([
-  z.literal("Near"),
-  z.object({ Nep141: z.object({ token: z.string() }) }),
-  z.object({ Evm: z.object({ chain_id: z.number().int(), token: z.string().nullable() }) }),
-  z.object({ Intents: z.object({ token: z.string() }) }),
-]);
+const asset = z
+  .union([
+    z.literal("Near"),
+    // Models often JSON-encode "Near" a second time; it's normalised before the contract sees it.
+    z.literal('"Near"'),
+    z.object({ Nep141: z.object({ token: z.string() }) }),
+    z.object({ Evm: z.object({ chain_id: z.number().int(), token: z.string().nullable() }) }),
+    z.object({ Intents: z.object({ token: z.string() }) }),
+  ])
+  .describe(
+    'Native NEAR is the bare string "Near". A NEP-141 token is {"Nep141":{"token":"usdc.testnet"}}; an EVM token is {"Evm":{"chain_id":84532,"token":"0x…"}}, with token null for the chain\'s own coin.',
+  );
 
 const dest = z.union([
   z.object({ Near: z.object({ account: z.string() }) }),
@@ -60,7 +66,8 @@ export function createServer({ purse, agent }: Wallet): McpServer {
       },
     },
     async (args) => {
-      const res = await agent.requestSpend(args as SpendRequest);
+      const spend = { ...args, asset: args.asset === '"Near"' ? "Near" : args.asset };
+      const res = await agent.requestSpend(spend as SpendRequest);
       if (!res.value) return { ...text(`rejected before a decision: ${res.error}`), isError: true };
       return text(
         `${describeDecision(res.value as Decision)}\n${JSON.stringify(res.value)}\nnear tx: ${res.txHash}`,

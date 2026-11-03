@@ -1,7 +1,7 @@
 # Deploy from the repo root: fly deploy . --config apps/range/fly.toml --ha=false
 # Secrets (never in this file): fly secrets set RANGE_AGENT_KEY=... RANGE_MODEL_KEY=...
 app = "pursestrings-range"
-primary_region = "lhr"
+primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile"

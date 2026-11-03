@@ -108,6 +108,23 @@ async function start(decision: unknown, perHour = 2, origins?: string[]) {
 }
 
 describe("range", () => {
+  it("shows a model's empty refusal instead of a blank reply", async () => {
+    const { runAttempt } = await import("./agent.ts");
+    const silent: ChatModel = {
+      chat: async () => ({
+        text: null,
+        toolCalls: [],
+        usage: { input: 1, output: 0 },
+        finish: "content_filter",
+        message: { role: "assistant", content: null },
+      }),
+    };
+    const { steps } = await runAttempt("x", silent, await tools({ Approved: { req_id: 0 } }));
+    expect(steps).toEqual([
+      { kind: "agent", text: '(The model declined to reply: finish reason "content_filter".)' },
+    ]);
+  });
+
   it("answers CORS only for the site's own origins", async () => {
     const { base } = await start({ Approved: { req_id: 0 } }, 2, [
       "https://pursestrings.site",

@@ -51,7 +51,7 @@ const server = rangeServer({
     baseUrl: env("RANGE_MODEL_URL", "https://cloud-api.near.ai/v1"),
     apiKey: need("RANGE_MODEL_KEY"),
     model: env("RANGE_MODEL", "anthropic/claude-haiku-5-5"),
-    maxTokens: 600,
+    maxTokens: 1024,
   }),
   tools,
   limits,
