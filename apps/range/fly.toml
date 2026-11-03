@@ -19,13 +19,20 @@ primary_region = "iad"
   source = "range_data"
   destination = "/data"
 
-# Rate limits, sessions and the daily cap are in memory: exactly one machine, always on.
+# One machine (deploy with --ha=false), stopped when idle and started by the next request.
+# The daily model cap and per-account limits are rebuilt from the log on start; sign-in
+# sessions are in memory, so a visitor may have to sign in again after a quiet spell.
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 50
 
   [[http_service.checks]]
     method = "GET"
