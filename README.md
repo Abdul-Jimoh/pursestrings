@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/assets/banner.png" alt="Pursestrings: your agent holds the purse, you hold the strings" width="100%"></p>
+
 # Pursestrings
 
 One spending policy for an AI agent across every chain. Jailbreak the agent and the money still doesn't move.
@@ -34,6 +36,67 @@ and execution is a NEP-297 event ([events.rs](contracts/pursestrings/src/events.
 
 The seven security invariants, where each is enforced and the test that checks it, are in
 [THREAT_MODEL.md](THREAT_MODEL.md).
+
+### How a payment flows
+
+The agent sends structured fields. Everything that gets signed is built inside the contract.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agent (LLM)
+    participant P as Pursestrings contract (NEAR)
+    participant M as NEAR MPC network
+    participant R as Relayer (untrusted)
+    participant B as Base
+
+    A->>P: request_spend { asset, amount, dest, purpose }
+    Note over P: Check caps, windows, allowlists, velocity.<br/>Reserve the budget.
+    alt Denied
+        P-->>A: Denied { reason } (logged as an event)
+    else Over the co-sign line
+        P-->>A: NeedsCosign: waits for the owner
+    else Approved, EVM payment
+        P->>P: Build the EIP-1559 transaction from the fields
+        P->>M: sign(hash of that transaction)
+        M-->>P: signature
+        P-->>A: Approved, signed
+        R->>P: read the signed transaction
+        R->>B: broadcast
+        Note over R,B: The relayer can delay it,<br/>but can't change or redirect it.
+        R->>P: confirm_evm (anyone can call)
+        P->>M: verify_foreign_transaction
+        M-->>P: final and succeeded
+        Note over P: Request Done, and the budget stays spent.
+    end
+```
+
+### Who can do what
+
+```mermaid
+flowchart LR
+    agent["Agent<br/>function-call key:<br/>request_spend, cancel_request"]
+    owner["Owner<br/>their own wallet"]
+    anyone["Anyone"]
+    contract[("Pursestrings account<br/>no full-access key")]
+    factory["Factory<br/>keys deleted after init"]
+
+    agent -- "asks" --> contract
+    owner -- "approves, tightens, freezes,<br/>proposes loosening (timelocked)" --> contract
+    anyone -- "settlement proofs,<br/>checked by the MPC network" --> contract
+    factory -- "creates; publishes code hashes<br/>the owner may migrate to" --> contract
+```
+
+### Changing the rules
+
+```mermaid
+flowchart LR
+    change["Owner signs a change"] --> stricter{"Stricter than<br/>the current policy?"}
+    stricter -- "yes: lower caps, fewer recipients,<br/>freeze, revoke" --> now["Applies in the same transaction"]
+    stricter -- "no: anything looser" --> queue["Queued with an ETA"]
+    queue -- "timelock passes" --> apply["Owner applies it"]
+    queue -- "any time before" --> cancel["Owner cancels it"]
+```
 
 ## Try it: do X, see Y
 
@@ -147,11 +210,6 @@ be submitted by anyone.
   approve pending co-signs and withdraw to the owner account.
 - **Reverted EVM transactions** and chains the MPC network can't verify fall back to the owner's
   word (`resolve_evm`).
-
-## AI use
-
-This project was built with Claude Code (Anthropic), which wrote most of the code under the
-author's direction.
 
 ## License
 
