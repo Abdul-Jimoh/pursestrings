@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import { useRef } from "react";
 import { gsap, reducedMotion, useGSAP } from "@/lib/gsap";
 import { blob } from "@/lib/site";
@@ -96,9 +97,7 @@ export function Verify() {
               <span className="mono text-dim">{String(i + 1).padStart(2, "0")}</span>
               <span className="text-[1.1rem] leading-snug md:text-[1.35rem]">{p.claim}</span>
               <span className="eyebrow col-start-2 text-string md:col-start-auto">{p.kind}</span>
-              <span className="hidden text-right transition-transform group-hover:translate-x-1 md:block">
-                ↗
-              </span>
+              <ArrowUpRight className="hidden size-5 justify-self-end transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 md:block" />
             </a>
           </li>
         ))}

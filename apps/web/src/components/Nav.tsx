@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -107,13 +108,13 @@ export function Nav() {
                 href={l.href}
                 onClick={() => toggle(false)}
                 tabIndex={open ? 0 : -1}
-                className={`flex items-baseline justify-between py-5 text-[clamp(1.8rem,9vw,3.5rem)] font-extrabold uppercase leading-none tracking-[-0.035em] transition-transform duration-500 ease-out [font-variation-settings:'wdth'_112] ${
+                className={`flex items-center justify-between gap-4 py-5 text-[clamp(1.8rem,9vw,3.5rem)] font-extrabold uppercase leading-none tracking-[-0.035em] transition-transform duration-500 ease-out [font-variation-settings:'wdth'_112] ${
                   open ? "translate-y-0" : "translate-y-full"
                 }`}
                 style={{ transitionDelay: open ? `${80 + i * 50}ms` : "0ms" }}
               >
                 {l.label}
-                <span className="text-[1.25rem] text-string">↗</span>
+                <ArrowUpRight className="size-7 shrink-0 text-string" strokeWidth={2.25} />
               </Link>
             </li>
           ))}
@@ -123,9 +124,9 @@ export function Nav() {
           <a
             href={REPO}
             tabIndex={open ? 0 : -1}
-            className="eyebrow whitespace-nowrap hover:text-string"
+            className="eyebrow inline-flex items-center gap-1.5 whitespace-nowrap hover:text-string"
           >
-            GitHub ↗
+            GitHub <ArrowUpRight className="size-3.5" />
           </a>
         </div>
       </div>

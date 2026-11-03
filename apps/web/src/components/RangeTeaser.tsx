@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { gsap, reducedMotion, useGSAP } from "@/lib/gsap";
@@ -79,9 +80,10 @@ export function RangeTeaser() {
               className="group inline-flex items-center gap-3 border-b-2 border-string pb-1 text-[1.35rem] font-extrabold uppercase tracking-[-0.02em]"
             >
               Enter the Range{" "}
-              <span className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1">
-                ↗
-              </span>
+              <ArrowUpRight
+                className="size-6 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"
+                strokeWidth={2.25}
+              />
             </Link>
             <span className="eyebrow text-dim-ink">
               {stats

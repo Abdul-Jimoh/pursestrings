@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useRef } from "react";
 import { gsap, reducedMotion, useGSAP } from "@/lib/gsap";
@@ -69,8 +70,8 @@ export function Footer() {
             </Link>
           </li>
           <li>
-            <a href={REPO} className="hover:text-string">
-              GitHub ↗
+            <a href={REPO} className="inline-flex items-center gap-1.5 hover:text-string">
+              GitHub <ArrowUpRight className="size-3.5" />
             </a>
           </li>
         </ul>

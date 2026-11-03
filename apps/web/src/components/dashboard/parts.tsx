@@ -1,3 +1,4 @@
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { describe } from "@/lib/ops";
 import { amount, assetInfo, span } from "@/lib/policy";
 import { destName, type Request, type Snapshot, type WindowStatus } from "@/lib/purse";
@@ -357,13 +358,16 @@ export function RedTeam() {
       </ol>
       <p className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[0.95rem] text-paper/60">
         <a
-          className="underline underline-offset-4 hover:text-paper"
+          className="inline-flex items-center gap-1.5 underline underline-offset-4 hover:text-paper"
           href={blob("scripts/redteam/expected.txt")}
         >
-          Expected output ↗
+          Expected output <ArrowUpRight className="size-4" />
         </a>
-        <a className="underline underline-offset-4 hover:text-paper" href="/range">
-          Try it live in the Range →
+        <a
+          className="inline-flex items-center gap-1.5 underline underline-offset-4 hover:text-paper"
+          href="/range"
+        >
+          Try it live in the Range <ArrowRight className="size-4" />
         </a>
       </p>
     </div>

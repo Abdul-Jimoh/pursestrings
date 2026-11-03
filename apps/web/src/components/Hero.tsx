@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { gsap, reducedMotion, revealLines, type SplitText, useGSAP } from "@/lib/gsap";
@@ -143,12 +144,19 @@ export function Hero() {
               className="group inline-flex items-center gap-3 border-b-2 border-paper pb-1 text-[1.35rem] font-extrabold uppercase tracking-[-0.02em]"
             >
               Try to break it{" "}
-              <span className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1">
-                ↗
-              </span>
+              <ArrowUpRight
+                className="size-6 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"
+                strokeWidth={2.25}
+              />
             </Link>
             <span className="eyebrow hidden text-dim-ink md:inline">
-              {taut ? "Pulled tight: that's every request" : "Pull the string ↓"}
+              {taut ? (
+                "Pulled tight: that's every request"
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  Pull the string <ArrowDown className="size-3.5" />
+                </span>
+              )}
             </span>
           </div>
         </div>

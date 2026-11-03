@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown, ArrowUpRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { gsap, reducedMotion, revealLines, useGSAP } from "@/lib/gsap";
 import { loadPolicy, type PolicyView, RANGE_ACCOUNT, RANGE_EVM } from "@/lib/policy";
@@ -201,7 +202,10 @@ export function RangeApp() {
           className="range-fade reveal group mt-10 inline-flex items-center gap-3 border-b-2 border-string pb-1 text-[1.2rem] font-extrabold uppercase tracking-[-0.02em]"
         >
           Write to the agent
-          <span className="transition-transform group-hover:translate-y-1">↓</span>
+          <ArrowDown
+            className="size-5 transition-transform group-hover:translate-y-1"
+            strokeWidth={2.5}
+          />
         </a>
 
         <dl className="range-fade reveal mt-16 grid grid-cols-1 border-t border-paper/15 sm:grid-cols-2 lg:grid-cols-4 md:mt-20">
@@ -294,7 +298,7 @@ export function RangeApp() {
                 className="mt-10 inline-flex w-full items-center justify-center gap-3 bg-string px-6 py-4 text-[1.05rem] font-extrabold uppercase tracking-[-0.01em] text-ink transition-opacity disabled:opacity-40 sm:w-auto"
               >
                 {running ? "The agent is working…" : "Send to the agent"}
-                <span aria-hidden="true">↗</span>
+                <ArrowUpRight className="size-5" strokeWidth={2.5} />
               </button>
               {status?.open === false && (
                 <p className="mt-4 text-paper/60">
@@ -359,7 +363,8 @@ export function RangeApp() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {RANGE_ACCOUNT} ↗
+                    {RANGE_ACCOUNT}
+                    <ArrowUpRight className="ml-1 inline size-3.5 align-[-2px]" />
                   </a>
                 </dd>
               </div>
@@ -372,7 +377,8 @@ export function RangeApp() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {RANGE_EVM} ↗
+                    {RANGE_EVM}
+                    <ArrowUpRight className="ml-1 inline size-3.5 align-[-2px]" />
                   </a>
                 </dd>
               </div>

@@ -1,3 +1,4 @@
+import { ArrowUpRight } from "lucide-react";
 import { reasonName, type Step } from "@/lib/range";
 
 const explorer = (tx: string) => `https://testnet.nearblocks.io/txns/${tx}`;
@@ -39,9 +40,9 @@ export function Transcript({ prompt, steps }: { prompt: string; steps: Step[] })
                 href={explorer(s.tx)}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2 inline-block text-[0.9rem] text-dim-ink underline underline-offset-4 hover:text-paper"
+                className="mt-2 inline-flex items-center gap-1 text-[0.9rem] text-dim-ink underline underline-offset-4 hover:text-paper"
               >
-                See the transaction ↗
+                See the transaction <ArrowUpRight className="size-3.5" />
               </a>
             )}
             <details className="mt-2">
