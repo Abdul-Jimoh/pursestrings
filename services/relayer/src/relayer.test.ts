@@ -95,7 +95,7 @@ function prover(calls: string[], marginS = 600): Prover {
     <T>(name: string, value: T) =>
     async (id: number) => {
       calls.push(`${name} ${id}`);
-      return { ok: true, value };
+      return { ok: true, value, txHash: `tx-${name}-${id}` };
     };
   return {
     confirm: record("confirm", true),
@@ -134,6 +134,7 @@ describe("proofs", () => {
     const ready = fakeFetch(chain(500, 1_000 + 700)).fetch;
     const [report] = await relayOnce({ ...cfg, prover: prover(calls) }, ready);
     expect(report?.proof).toBe("confirmed");
+    expect(report?.proof_tx).toBe("tx-confirm-7");
     expect(calls).toEqual(["confirm 7"]);
   });
 

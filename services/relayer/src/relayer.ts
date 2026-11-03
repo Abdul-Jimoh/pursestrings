@@ -5,9 +5,11 @@ import { type Fetch, nearView } from "./rpc.ts";
  * Proves settled transactions to the contract. Anyone may call `confirm_evm` / `release_evm`:
  * the MPC network checks the claim, so a prover can only state true facts and pays its own gas.
  */
+type Proof = { ok: boolean; value?: boolean | undefined; error?: string; txHash?: string };
+
 export interface Prover {
-  confirm(reqId: number): Promise<{ ok: boolean; value?: boolean | undefined; error?: string }>;
-  release(reqId: number): Promise<{ ok: boolean; value?: boolean | undefined; error?: string }>;
+  confirm(reqId: number): Promise<Proof>;
+  release(reqId: number): Promise<Proof>;
   settle(
     reqId: number,
   ): Promise<{ ok: boolean; value?: string | null | undefined; error?: string }>;
@@ -102,6 +104,7 @@ export async function relayOnce(cfg: Config, fetchFn: Fetch = fetch): Promise<Re
           const res = await (kind === "spend" ? prover.confirm(reqId) : prover.release(reqId));
           report.proof =
             res.ok && res.value ? (kind === "spend" ? "confirmed" : "released") : "failed";
+          if (res.txHash) report.proof_tx = res.txHash;
           if (!res.ok && res.error) report.error = res.error;
         }
       }

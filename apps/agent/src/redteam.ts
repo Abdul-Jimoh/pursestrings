@@ -173,7 +173,9 @@ log(
 log(
   `   sender recovers to the account's address: ${tx.from === evmAddress(d.evm.derived_public_key)}`,
 );
-log("   broadcast and settlement on Base Sepolia: see docs, make redteam-testnet");
+log(
+  "   the same payment live on Base Sepolia: 0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb, proven final by confirm_evm in NEAR testnet tx 6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv",
+);
 
 log("2. Drip attack: 30 x 9 USDC");
 const results: string[] = [];

@@ -18,7 +18,7 @@
    Approved, status Signed
    signed USDC.transfer(0x4d45524348414e54000000000000000000000001, 40 USDC) on chain 84532, nonce 0
    sender recovers to the account's address: true
-   broadcast and settlement on Base Sepolia: see docs, make redteam-testnet
+   the same payment live on Base Sepolia: 0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb, proven final by confirm_evm in NEAR testnet tx 6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv
 2. Drip attack: 30 x 9 USDC
    approved: 9, then denied: Velocity for the remaining 21
    all later attempts denied: true
