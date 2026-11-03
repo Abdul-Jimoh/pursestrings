@@ -94,7 +94,7 @@ export function Hero() {
   return (
     <section ref={root} className="surface-ink grain relative min-h-[100svh] overflow-hidden">
       <svg
-        className="hero-svg reveal pointer-events-none absolute right-[-38%] top-0 h-[100svh] w-auto opacity-50 md:right-[-6%] md:opacity-100"
+        className="hero-svg reveal pointer-events-none absolute right-[-6%] top-0 hidden h-[100svh] w-auto md:block"
         viewBox="0 0 800 960"
         fill="none"
         aria-hidden="true"
@@ -147,7 +147,7 @@ export function Hero() {
                 ↗
               </span>
             </Link>
-            <span className="eyebrow text-dim-ink">
+            <span className="eyebrow hidden text-dim-ink md:inline">
               {taut ? "Pulled tight: that's every request" : "Pull the string ↓"}
             </span>
           </div>
