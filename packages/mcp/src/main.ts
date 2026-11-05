@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Pursestrings } from "@pursestrings/sdk";
 import { createServer } from "./server.ts";
+import { parseDecimals } from "./units.ts";
 
 /**
  * PURSESTRINGS_RPC, PURSESTRINGS_ACCOUNT and PURSESTRINGS_AGENT_KEY (the agent's function-call
  * key), or PURSESTRINGS_DEVNET pointing at the `.devnet/devnet.json` that `make demo-keep` writes.
+ * PURSESTRINGS_DECIMALS (`token:6,…`) names token decimals so the tools can show whole amounts.
  */
 function config() {
   const devnet = process.env.PURSESTRINGS_DEVNET;
@@ -27,4 +29,8 @@ function config() {
 
 const { rpc, account, key } = config();
 const purse = new Pursestrings(rpc, account);
-await createServer({ purse, agent: purse.agent(key) }).connect(new StdioServerTransport());
+await createServer({
+  purse,
+  agent: purse.agent(key),
+  decimals: parseDecimals(process.env.PURSESTRINGS_DECIMALS),
+}).connect(new StdioServerTransport());

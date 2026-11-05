@@ -7,9 +7,43 @@ import { type Snapshot, snapshot } from "@/lib/purse";
 import { connectAccount, connectedAccount, disconnect, ownerCall } from "@/lib/wallet";
 import { Block } from "../Block";
 import { Editor } from "./Editor";
-import { type Act, Agents, Budgets, Button, Inbox, Queue, RedTeam, Stream } from "./parts";
+import {
+  type Act,
+  Agents,
+  Budgets,
+  Button,
+  Inbox,
+  lapsed,
+  Queue,
+  RedTeam,
+  Stream,
+  waiting,
+} from "./parts";
 
 const nowS = () => Math.floor(Date.now() / 1000);
+
+const clock = (s: number) =>
+  new Date(s * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// A proposal can apply stricter parts at once and queue the looser ones, so the message says which.
+function outcome(label: string, before: Snapshot | null, after: Snapshot | null) {
+  if (!before || !after) return `${label}: done.`;
+  const queued = after.proposals.filter((p) => !before.proposals.some((q) => q.id === p.id));
+  const applied = after.policy.version > before.policy.version;
+  if (queued.length === 0) return `${label}: done.`;
+  const eta = Math.max(...queued.map((p) => p.eta));
+  const wait = `Looser rules wait ${duration(before.policy.timelock_s)}: from ${clock(eta)}, press Apply under Queued changes.`;
+  return applied ? `Stricter parts applied now. ${wait}` : `Queued. ${wait}`;
+}
+
+function failure(message: string, before: Snapshot | null) {
+  if (/panicked: expired/.test(message))
+    return `the request expired before it was approved (requests wait ${before ? duration(before.policy.pending_ttl_s) : "a limited time"}), so it can't be paid. Close it to free its budget.`;
+  if (/panicked: timelocked/.test(message)) return "this change is still in its waiting period.";
+  if (/panicked: frozen/.test(message)) return "the account is frozen.";
+  const panic = message.match(/panicked: ([^"}]+)/);
+  return panic ? `the contract refused: ${panic[1]}.` : message;
+}
 
 export function Dashboard() {
   const root = useRef<HTMLDivElement>(null);
@@ -26,8 +60,10 @@ export function Dashboard() {
 
   const load = useCallback(async (id: string) => {
     try {
-      setSnap(await snapshot(id));
+      const next = await snapshot(id);
+      setSnap(next);
       setLoadError(null);
+      return next;
     } catch (e) {
       setLoadError(
         /does not exist|doesn't exist|UNKNOWN_ACCOUNT/i.test((e as Error).message)
@@ -37,6 +73,7 @@ export function Dashboard() {
             : (e as Error).message,
       );
       setSnap(null);
+      return null;
     }
   }, []);
 
@@ -81,13 +118,14 @@ export function Dashboard() {
   const act: Act = async (label, method, args = {}) => {
     setBusy(label);
     setNotice(null);
+    const before = snap;
     try {
-      await ownerCall(account, method, args);
-      setNotice({ ok: true, text: `${label}: done.` });
-      await load(account);
+      await ownerCall(account, method, args, { deposit: method === "expire_request" ? "0" : "1" });
+      const after = await load(account);
       setVersion((v) => v + 1);
+      setNotice({ ok: true, text: outcome(label, before, after) });
     } catch (e) {
-      setNotice({ ok: false, text: `${label}: ${(e as Error).message}` });
+      setNotice({ ok: false, text: `${label}: ${failure((e as Error).message, before)}` });
     } finally {
       setBusy(null);
     }
@@ -101,10 +139,7 @@ export function Dashboard() {
     window.history.replaceState(null, "", `?purse=${encodeURIComponent(id)}`);
   };
 
-  const pending =
-    snap?.requests?.filter(
-      (r) => r.req.status === "PendingCosign" || r.req.status === "PendingRisk",
-    ).length ?? 0;
+  const pending = snap?.requests?.filter((r) => waiting(r.req) && !lapsed(r.req, now)).length ?? 0;
 
   const stats = snap
     ? [

@@ -35,9 +35,12 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+export type Log = { entries: Entry[]; hallOfFame: Entry[]; total: number };
+
 export const range = {
   status: () => call<Status>("/api/status"),
-  log: () => call<{ entries: Entry[]; hallOfFame: Entry[] }>("/api/log?limit=40"),
+  log: (limit: number, before?: number) =>
+    call<Log>(`/api/log?limit=${limit}${before === undefined ? "" : `&before=${before}`}`),
   nonce: () =>
     call<{ nonce: string; message: string; recipient: string }>("/api/nonce", { method: "POST" }),
   session: (s: { accountId: string; publicKey: string; signature: string; nonce: string }) =>

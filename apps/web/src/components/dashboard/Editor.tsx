@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { describe, type Op, tightens } from "@/lib/ops";
 import {
@@ -194,6 +195,10 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
 
       <div>
         <h3 className="eyebrow text-dim-ink">Who it may pay</h3>
+        <p className="mt-2 text-[0.9rem] text-paper/60">
+          The only places money can go. A NEAR account looks like shop.testnet; an address on
+          another chain looks like 0x… and is paid through Chain Signatures.
+        </p>
         <ul className="mt-4 flex flex-col gap-2">
           {[...policy.recipients, ...d.added].map((r) => {
             const k = recipientKey(r);
@@ -225,19 +230,25 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
           })}
         </ul>
         <div className="mt-4 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <select
-            aria-label="Recipient type"
-            className={input}
-            value={String(kind)}
-            onChange={(e) => setKind(e.target.value === "near" ? "near" : Number(e.target.value))}
-          >
-            <option value="near">NEAR account</option>
-            {policy.chains.map((c) => (
-              <option key={c} value={c}>
-                Address on {chainName(c)}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              aria-label="Where the recipient is"
+              className={`${input} cursor-pointer appearance-none pr-10`}
+              value={String(kind)}
+              onChange={(e) => setKind(e.target.value === "near" ? "near" : Number(e.target.value))}
+            >
+              <option value="near">On NEAR</option>
+              {policy.chains.map((c) => (
+                <option key={c} value={c}>
+                  On {chainName(c)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dim-ink"
+            />
+          </div>
           <input
             aria-label="Recipient"
             className={`${input} mono text-[0.9rem]`}

@@ -69,3 +69,36 @@ describe("mcp server", () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe("whole units", () => {
+  it("puts whole-token amounts beside raw ones in the policy", async () => {
+    const usdc = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
+    const purse = {
+      policy: async () => ({
+        assets: [
+          {
+            asset: "Near",
+            per_tx_cap: "500000000000000000000000",
+            windows: [{ period_s: 86400, limit: "2000000000000000000000000" }],
+            cosign_above: "300000000000000000000000",
+          },
+          { asset: { Evm: { chain_id: 84532, token: usdc } }, per_tx_cap: "50000000", windows: [] },
+          { asset: { Nep141: { token: "unknown.near" } }, per_tx_cap: "7", windows: [] },
+        ],
+        groups: [],
+      }),
+    } as unknown as Pursestrings;
+    const server = createServer({ purse, agent: {} as never, decimals: { [usdc]: 6 } });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0" });
+    await Promise.all([server.connect(a), client.connect(b)]);
+    const res = await client.callTool({ name: "spending_policy", arguments: {} });
+    const [first] = res.content as { text: string }[];
+    const { assets } = JSON.parse(first?.text ?? "{}");
+    expect(assets[0].per_tx_cap_whole).toBe("0.5");
+    expect(assets[0].cosign_above_whole).toBe("0.3");
+    expect(assets[0].windows[0].limit_whole).toBe("2");
+    expect(assets[1].per_tx_cap_whole).toBe("50");
+    expect(assets[2].per_tx_cap_whole).toBeUndefined();
+  });
+});

@@ -1,12 +1,14 @@
 "use client";
 
-import { ArrowDown, ArrowUpRight } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { gsap, reducedMotion, revealLines, useGSAP } from "@/lib/gsap";
 import { loadPolicy, type PolicyView, RANGE_ACCOUNT, RANGE_EVM } from "@/lib/policy";
-import { type Entry, range, type Status, verdict, verdictColor } from "@/lib/range";
+import { type Entry, type Log, range, type Status, verdict, verdictColor } from "@/lib/range";
 import { signIn } from "@/lib/wallet";
 import { Block } from "../Block";
+import { AttemptList } from "./Attempts";
 import { Transcript } from "./Transcript";
 
 const examples = [
@@ -34,14 +36,8 @@ const rules = [
   },
 ];
 
-const badge = (e: Entry) => {
-  if (e.breach) return { text: "Breach", color: "var(--color-string)" };
-  const v = verdict(e);
-  const text = { paid: "Allowed", waiting: "Held", refused: "Refused", none: "No payment" }[v.kind];
-  return { text, color: verdictColor[v.kind] };
-};
-
 const TOKEN_KEY = "range-session";
+const FEED = 10;
 
 function load(key: string): string | null {
   try {
@@ -57,29 +53,16 @@ function save(key: string, value: string) {
   } catch {}
 }
 
-const ago = (t: number) => {
-  const s = Math.max(1, Math.round((Date.now() - t) / 1000));
-  return s < 60
-    ? `${s}s ago`
-    : s < 3600
-      ? `${Math.round(s / 60)}m ago`
-      : `${Math.round(s / 3600)}h ago`;
-};
-
 export function RangeApp() {
   const root = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [offline, setOffline] = useState(false);
   const [policy, setPolicy] = useState<PolicyView | null>(null);
-  const [log, setLog] = useState<{ entries: Entry[]; hallOfFame: Entry[] }>({
-    entries: [],
-    hallOfFame: [],
-  });
+  const [log, setLog] = useState<Log>({ entries: [], hallOfFame: [], total: 0 });
   const [session, setSession] = useState<{ token: string; account: string } | null>(null);
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<Entry | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -91,7 +74,7 @@ export function RangeApp() {
       })
       .catch(() => setOffline(true));
     range
-      .log()
+      .log(FEED)
       .then(setLog)
       .catch(() => {});
   }, []);
@@ -208,12 +191,9 @@ export function RangeApp() {
           />
         </a>
 
-        <dl className="range-fade reveal mt-16 grid grid-cols-1 border-t border-paper/15 sm:grid-cols-2 lg:grid-cols-4 md:mt-20">
+        <dl className="range-fade reveal mt-16 grid grid-cols-1 gap-px border border-paper/15 bg-paper/15 sm:grid-cols-2 lg:grid-cols-4 md:mt-20">
           {stats.map((s) => (
-            <div
-              key={s.label}
-              className="border-b border-paper/15 py-6 sm:odd:border-r sm:odd:pr-6 sm:even:pl-6 lg:border-b-0 lg:border-r lg:px-6 lg:first:pl-0 lg:last:border-r-0"
-            >
+            <div key={s.label} className="bg-ink p-6 md:p-8">
               <dt className="eyebrow text-dim-ink">{s.label}</dt>
               <dd
                 className={`mt-3 flex items-center gap-3 text-[1.6rem] font-bold leading-tight tracking-[-0.02em] ${s.tone ?? ""}`}
@@ -442,7 +422,7 @@ export function RangeApp() {
 
       <Block
         label="Attempts"
-        intro="Every attempt, newest first. Open one to see what the agent did and what the contract decided."
+        intro="The latest attempts from anyone, newest first. Open one to see what the agent did and what the contract decided."
         className="border-t border-paper/15"
       >
         <div className="flex flex-col gap-16">
@@ -477,43 +457,18 @@ export function RangeApp() {
                 {offline ? "The Range is offline right now." : "No attempts yet. Be the first."}
               </p>
             ) : (
-              <ul className="mt-4 border-t border-paper/15">
-                {log.entries.map((e) => {
-                  const b = badge(e);
-                  const v = verdict(e);
-                  return (
-                    <li key={e.id} className="border-b border-paper/15">
-                      <button
-                        type="button"
-                        aria-expanded={open === e.id}
-                        onClick={() => setOpen(open === e.id ? null : e.id)}
-                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-2 py-6 text-left"
-                      >
-                        <span className="mono block break-all text-[0.78rem] text-dim-ink">
-                          #{e.id} · {e.account} · {ago(e.at)}
-                        </span>
-                        <span
-                          className="eyebrow row-span-2 whitespace-nowrap border px-2 py-1 text-[0.65rem]"
-                          style={{ color: b.color, borderColor: b.color }}
-                        >
-                          {b.text}
-                        </span>
-                        <span className="line-clamp-2 break-words leading-snug text-paper/85">
-                          {e.prompt}
-                        </span>
-                      </button>
-                      {open === e.id && (
-                        <div className="pb-8">
-                          <p className="eyebrow mb-6" style={{ color: verdictColor[v.kind] }}>
-                            {v.label}
-                          </p>
-                          <Transcript prompt={e.prompt} steps={e.steps} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="mt-4">
+                <AttemptList entries={log.entries} />
+                {log.total > log.entries.length && (
+                  <Link
+                    href="/range/attempts"
+                    className="group mt-8 inline-flex items-center gap-2 border-b border-paper/40 pb-1 text-paper/80 hover:border-paper hover:text-paper"
+                  >
+                    See all {log.total} attempts
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                )}
+              </div>
             )}
           </div>
         </div>

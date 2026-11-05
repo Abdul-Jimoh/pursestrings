@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "@pursestrings/mcp";
+import { createServer, parseDecimals } from "@pursestrings/mcp";
 import { Pursestrings } from "@pursestrings/sdk";
 import { JsonRpcProvider } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
@@ -30,7 +30,12 @@ const purse = new Pursestrings(rpc, account);
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
 const tools = new Client({ name: "range", version: "0.1.0" });
 await Promise.all([
-  createServer({ purse, agent: purse.agent(agentKey) }).connect(serverSide),
+  createServer({
+    purse,
+    agent: purse.agent(agentKey),
+    // Base Sepolia USDC; the contract stores raw amounts and can't know a token's decimals.
+    decimals: parseDecimals(env("RANGE_DECIMALS", "0x036cbd53842c5426634e7929541ec2318f3dcf7e:6")),
+  }).connect(serverSide),
   tools.connect(clientSide),
 ]);
 

@@ -90,10 +90,15 @@ export function rangeServer(d: RangeDeps) {
         });
       }
       if (req.method === "GET" && url.pathname === "/api/log") {
-        const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
+        const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 200);
+        const before = Number(url.searchParams.get("before")) || Number.POSITIVE_INFINITY;
         const all = d.store.all();
         return send(res, 200, {
-          entries: all.slice(-limit).reverse(),
+          entries: all
+            .filter((e) => e.id < before)
+            .slice(-limit)
+            .reverse(),
+          total: all.length,
           hallOfFame: all.filter((e) => e.breach),
         });
       }

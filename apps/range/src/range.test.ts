@@ -167,6 +167,22 @@ describe("range", () => {
     expect(log.entries).toHaveLength(1);
   });
 
+  it("pages the log newest first", async () => {
+    const r = await start({ Denied: { reason: "RecipientNotAllowed" } }, 5);
+    const token = (await r.signIn()).body.token as string;
+    for (const p of ["a", "b", "c"]) await r.post("/api/attack", { prompt: p }, token);
+    const page = async (q: string) =>
+      (await (await fetch(`${r.base}/api/log?${q}`)).json()) as {
+        entries: { id: number; prompt: string }[];
+        total: number;
+      };
+    const first = await page("limit=2");
+    expect(first.total).toBe(3);
+    expect(first.entries.map((e) => e.prompt)).toEqual(["c", "b"]);
+    const next = await page(`limit=2&before=${first.entries[1]?.id}`);
+    expect(next.entries.map((e) => e.prompt)).toEqual(["a"]);
+  });
+
   it("flags an approved payment to someone else as a breach", async () => {
     const r = await start({ Approved: { req_id: 3 } });
     const token = (await r.signIn()).body.token as string;

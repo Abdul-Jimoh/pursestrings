@@ -6,6 +6,12 @@ import { blob } from "@/lib/site";
 
 export type Act = (label: string, method: string, args?: Record<string, unknown>) => void;
 
+export const waiting = (req: Request) =>
+  req.status === "PendingCosign" || req.status === "PendingRisk";
+
+export const lapsed = (req: Request, now: number) =>
+  waiting(req) && req.expires_at !== null && req.expires_at <= now;
+
 const short = (key: string) => `${key.slice(0, 14)}…${key.slice(-4)}`;
 
 export const ago = (s: number, now: number) => {
@@ -153,47 +159,69 @@ export function Inbox({
   act: Act;
   now: number;
 }) {
-  const pending = (snap.requests ?? []).filter(
-    ({ req }) => req.status === "PendingCosign" || req.status === "PendingRisk",
-  );
   if (snap.requests === null) return <OldCode />;
+  const pending = snap.requests.filter(({ req }) => waiting(req));
   if (pending.length === 0)
     return <p className="text-[1.1rem] text-paper/70">Nothing is waiting for you.</p>;
   return (
     <ul className="flex flex-col gap-4">
-      {pending.map(({ id, req }) => (
-        <li key={id} className="border border-wait/40 p-5 md:p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[1.3rem] font-bold">{money(req)}</p>
-            <span className="mono text-[0.8rem] text-dim-ink">
-              #{id} · expires {req.expires_at ? until(req.expires_at, now) : "never"}
-            </span>
-          </div>
-          <p className="mt-2 break-all text-paper/80">To {destName(req.spend.dest)}</p>
-          {req.spend.purpose && (
-            <p className="mt-1 text-paper/60">&ldquo;{req.spend.purpose}&rdquo;</p>
-          )}
-          <p className="mt-3 text-[0.9rem] text-paper/50">
-            Over the co-sign line, so its budget is held until you decide.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button
-              tone="go"
-              disabled={!owner}
-              onClick={() => act(`Approve #${id}`, "approve_request", { req_id: id })}
-            >
-              Approve and pay
-            </Button>
-            <Button
-              tone="stop"
-              disabled={!owner}
-              onClick={() => act(`Reject #${id}`, "reject_request", { req_id: id })}
-            >
-              Reject
-            </Button>
-          </div>
-        </li>
-      ))}
+      {pending.map(({ id, req }) => {
+        const over = lapsed(req, now);
+        return (
+          <li
+            key={id}
+            className={`border p-5 md:p-6 ${over ? "border-paper/15" : "border-wait/40"}`}
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-[1.3rem] font-bold">{money(req)}</p>
+              <span className="mono text-[0.8rem] text-dim-ink">
+                #{id} ·{" "}
+                {req.expires_at === null
+                  ? "never expires"
+                  : over
+                    ? `expired ${ago(req.expires_at, now)}`
+                    : `expires ${until(req.expires_at, now)}`}
+              </span>
+            </div>
+            <p className="mt-2 break-all text-paper/80">To {destName(req.spend.dest)}</p>
+            {req.spend.purpose && (
+              <p className="mt-1 text-paper/60">&ldquo;{req.spend.purpose}&rdquo;</p>
+            )}
+            <p className="mt-3 text-[0.9rem] text-paper/50">
+              {over
+                ? "Nobody approved it in time, so it can't be paid any more. Closing it frees the budget it still holds."
+                : "Over the co-sign line, so its budget is held until you decide."}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              {over ? (
+                <Button
+                  disabled={!owner}
+                  onClick={() => act(`Close #${id}`, "expire_request", { req_id: id })}
+                >
+                  Close it
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    tone="go"
+                    disabled={!owner}
+                    onClick={() => act(`Approve #${id}`, "approve_request", { req_id: id })}
+                  >
+                    Approve and pay
+                  </Button>
+                  <Button
+                    tone="stop"
+                    disabled={!owner}
+                    onClick={() => act(`Reject #${id}`, "reject_request", { req_id: id })}
+                  >
+                    Reject
+                  </Button>
+                </>
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -269,7 +297,9 @@ export function Stream({ snap, now }: { snap: Snapshot; now: number }) {
   return (
     <ul className="border-t border-paper/15">
       {snap.requests.map(({ id, req }) => {
-        const s = STATUS[req.status] ?? { text: req.status, color: "var(--color-paper)" };
+        const s = lapsed(req, now)
+          ? { text: "Expired, not paid", color: "var(--color-dim-ink)" }
+          : (STATUS[req.status] ?? { text: req.status, color: "var(--color-paper)" });
         return (
           <li
             key={id}

@@ -10,6 +10,9 @@ import {
   type SpendRequest,
 } from "@pursestrings/sdk";
 import { z } from "zod";
+import { type Decimals, withWhole } from "./units.ts";
+
+export { parseDecimals } from "./units.ts";
 
 const asset = z
   .union([
@@ -42,6 +45,8 @@ const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
 export interface Wallet {
   purse: Pursestrings;
   agent: Pick<Agent, "requestSpend">;
+  /** Token decimals by contract or address; NEAR (24) and EVM native coins (18) are built in. */
+  decimals?: Decimals;
 }
 
 /**
@@ -49,7 +54,7 @@ export interface Wallet {
  * funds or change the policy, because its key can only call `request_spend` and
  * `cancel_request`, and the contract decides.
  */
-export function createServer({ purse, agent }: Wallet): McpServer {
+export function createServer({ purse, agent, decimals = {} }: Wallet): McpServer {
   const server = new McpServer({ name: "pursestrings", version: "0.1.0" });
 
   server.registerTool(
@@ -79,14 +84,19 @@ export function createServer({ purse, agent }: Wallet): McpServer {
     "budget_status",
     {
       description:
-        "What's left to spend: each asset's per-payment cap and windows, each shared budget group (one budget across chains), and the fee budget.",
+        "What's left to spend: each asset's per-payment cap and windows, each shared budget group (one budget across chains), and the fee budget. *_whole fields give amounts in whole tokens.",
     },
     async () => {
       const policy = (await purse.policy()) as {
         assets: { asset: Asset }[];
         groups: { name: string }[];
       };
-      const assets = await Promise.all(policy.assets.map((r) => purse.budgetStatus(r.asset)));
+      const assets = await Promise.all(
+        policy.assets.map(async (r) => {
+          const b = await purse.budgetStatus(r.asset);
+          return b && withWhole(b, decimals);
+        }),
+      );
       const groups = await Promise.all(
         policy.groups.map(async (g) => ({
           group: g.name,
@@ -101,9 +111,13 @@ export function createServer({ purse, agent }: Wallet): McpServer {
     "spending_policy",
     {
       description:
-        "The owner's policy: which assets, recipients, chains and swap pairs are allowed, the limits, and whether the account is frozen. Read it before planning a payment.",
+        "The owner's policy: which assets, recipients, chains and swap pairs are allowed, the limits, and whether the account is frozen. Raw amounts are in the smallest unit; *_whole fields give the same amounts in whole tokens. Read it before planning a payment.",
     },
-    async () => text(JSON.stringify(await purse.policy(), null, 2)),
+    async () => {
+      const policy = (await purse.policy()) as { assets: { asset: Asset }[] };
+      const assets = policy.assets.map((r) => withWhole(r, decimals));
+      return text(JSON.stringify({ ...policy, assets }, null, 2));
+    },
   );
 
   server.registerTool(
