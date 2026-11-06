@@ -6,6 +6,7 @@ import { duration, RANGE_ACCOUNT } from "@/lib/policy";
 import { type Snapshot, snapshot } from "@/lib/purse";
 import { connectAccount, connectedAccount, disconnect, ownerCall } from "@/lib/wallet";
 import { Block } from "../Block";
+import { Stats } from "../Stats";
 import { Editor } from "./Editor";
 import {
   type Act,
@@ -233,22 +234,7 @@ export function Dashboard() {
 
         {loadError && <p className="mt-10 text-refused">{loadError}</p>}
 
-        {snap && (
-          <dl className="mt-16 grid grid-cols-1 border-t border-paper/15 sm:grid-cols-2 lg:grid-cols-4 md:mt-20">
-            {stats.map((s) => (
-              <div
-                key={s.label}
-                className="border-b border-paper/15 py-6 sm:odd:border-r sm:odd:pr-6 sm:even:pl-6 lg:border-b-0 lg:border-r lg:px-6 lg:first:pl-0 lg:last:border-r-0"
-              >
-                <dt className="eyebrow text-dim-ink">{s.label}</dt>
-                <dd className="mt-3 flex items-center gap-3 text-[1.6rem] font-bold leading-tight tracking-[-0.02em]">
-                  {s.dot && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${s.dot}`} />}
-                  {s.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        {snap && <Stats stats={stats} className="mt-16 md:mt-20" />}
       </header>
 
       {(busy || notice) && (

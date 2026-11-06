@@ -8,6 +8,7 @@ import { loadPolicy, type PolicyView, RANGE_ACCOUNT, RANGE_EVM } from "@/lib/pol
 import { type Entry, type Log, range, type Status, verdict, verdictColor } from "@/lib/range";
 import { signIn } from "@/lib/wallet";
 import { Block } from "../Block";
+import { Stats } from "../Stats";
 import { AttemptList } from "./Attempts";
 import { Transcript } from "./Transcript";
 
@@ -191,20 +192,7 @@ export function RangeApp() {
           />
         </a>
 
-        <dl className="range-fade reveal mt-16 grid grid-cols-1 gap-px border border-paper/15 bg-paper/15 sm:grid-cols-2 lg:grid-cols-4 md:mt-20">
-          {stats.map((s) => (
-            <div key={s.label} className="bg-ink p-6 md:p-8">
-              <dt className="eyebrow text-dim-ink">{s.label}</dt>
-              <dd
-                className={`mt-3 flex items-center gap-3 text-[1.6rem] font-bold leading-tight tracking-[-0.02em] ${s.tone ?? ""}`}
-              >
-                {s.dot && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${s.dot}`} />}
-                {s.value}
-              </dd>
-              {s.note && <dd className="mt-1 text-[0.9rem] text-paper/50">{s.note}</dd>}
-            </div>
-          ))}
-        </dl>
+        <Stats stats={stats} className="range-fade reveal mt-16 md:mt-20" />
       </header>
 
       <Block
