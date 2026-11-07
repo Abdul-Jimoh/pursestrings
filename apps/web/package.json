@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:classes": "node scripts/classes.mjs"
   },
   "dependencies": {
     "@gsap/react": "2.1.2",

@@ -93,9 +93,9 @@ export function Hero() {
   });
 
   return (
-    <section ref={root} className="surface-ink grain relative min-h-[100svh] overflow-hidden">
+    <section ref={root} className="surface-ink grain relative min-h-svh overflow-hidden">
       <svg
-        className="hero-svg reveal pointer-events-none absolute right-[-6%] top-0 hidden h-[100svh] w-auto md:block"
+        className="hero-svg reveal pointer-events-none absolute right-[-6%] top-0 hidden h-svh w-auto md:block"
         viewBox="0 0 800 960"
         fill="none"
         aria-hidden="true"
@@ -122,8 +122,8 @@ export function Hero() {
         </g>
       </svg>
 
-      <div className="hero-content relative z-10 flex min-h-[100svh] min-w-0 flex-col justify-end px-5 pb-10 pt-32 md:px-10 md:pb-14">
-        <p className="eyebrow hero-fade reveal mb-8 max-w-[22rem] text-dim-ink md:max-w-none">
+      <div className="hero-content relative z-10 flex min-h-svh min-w-0 flex-col justify-end px-5 pb-10 pt-32 md:px-10 md:pb-14">
+        <p className="eyebrow hero-fade reveal mb-8 max-w-88 text-dim-ink md:max-w-none">
           On-chain spending policy for AI agents · NEAR · EVM · Intents
         </p>
         <h1 className="display min-w-0 text-[clamp(2.25rem,10.5vw,4.75rem)] md:text-[clamp(4rem,7.4vw,9.25rem)]">
@@ -133,7 +133,7 @@ export function Hero() {
           <span className="hero-line reveal block text-string md:pl-[4vw]">the strings.</span>
         </h1>
         <div className="mt-10 grid gap-8 md:mt-14 md:grid-cols-[minmax(0,34rem)_1fr] md:items-end">
-          <p className="hero-fade reveal max-w-[34rem] text-[1.05rem] leading-relaxed text-paper/80">
+          <p className="hero-fade reveal max-w-136 text-[1.05rem] leading-relaxed text-paper/80">
             One on-chain policy for every chain your agent touches: NEAR, every EVM chain through
             Chain Signatures, and NEAR Intents. The agent can only ask. The contract builds and
             checks every payment itself.

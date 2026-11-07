@@ -17,14 +17,16 @@ export function Transcript({ prompt, steps }: { prompt: string; steps: Step[] })
     <ol className="flex flex-col gap-6">
       <li>
         <p className="eyebrow text-dim-ink">You</p>
-        <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-paper">{prompt}</p>
+        <p className="mt-2 whitespace-pre-wrap wrap-break-word leading-relaxed text-paper">
+          {prompt}
+        </p>
       </li>
       {steps.map((s, i) =>
         s.kind === "agent" ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: a transcript is an append-only log that never reorders
           <li key={i}>
             <p className="eyebrow text-dim-ink">Agent</p>
-            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-paper/70">
+            <p className="mt-2 whitespace-pre-wrap wrap-break-word leading-relaxed text-paper/70">
               {s.text}
             </p>
           </li>

@@ -294,7 +294,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
                     key={JSON.stringify(op)}
                     className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-6"
                   >
-                    <span className="break-words leading-relaxed">{describe(op)}</span>
+                    <span className="wrap-break-word leading-relaxed">{describe(op)}</span>
                     <span className={`eyebrow ${now ? "text-paid" : "text-wait"}`}>
                       {now ? "Applies now" : `Waits ${duration(policy.timelock_s)}`}
                     </span>

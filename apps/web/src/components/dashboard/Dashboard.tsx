@@ -247,7 +247,7 @@ export function Dashboard() {
           ) : (
             notice && (
               <div className="flex items-start justify-between gap-4">
-                <p className={`break-words ${notice.ok ? "text-paid" : "text-refused"}`}>
+                <p className={`wrap-break-word ${notice.ok ? "text-paid" : "text-refused"}`}>
                   {notice.text}
                 </p>
                 <button

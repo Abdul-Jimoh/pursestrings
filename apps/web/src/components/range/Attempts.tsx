@@ -46,7 +46,7 @@ export function AttemptList({ entries }: { entries: Entry[] }) {
               >
                 {b.text}
               </span>
-              <span className="line-clamp-2 break-words leading-snug text-paper/85">
+              <span className="line-clamp-2 wrap-break-word leading-snug text-paper/85">
                 {e.prompt}
               </span>
             </button>

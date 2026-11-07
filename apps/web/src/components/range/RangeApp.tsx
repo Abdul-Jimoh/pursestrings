@@ -251,7 +251,7 @@ export function RangeApp() {
                     <button
                       type="button"
                       onClick={() => setPrompt(x)}
-                      className="w-full break-words border border-paper/15 px-4 py-3 text-left text-[0.95rem] leading-snug text-paper/65 transition-colors hover:border-paper/50 hover:text-paper"
+                      className="w-full wrap-break-word border border-paper/15 px-4 py-3 text-left text-[0.95rem] leading-snug text-paper/65 transition-colors hover:border-paper/50 hover:text-paper"
                     >
                       {x}
                     </button>
@@ -295,7 +295,7 @@ export function RangeApp() {
           )}
           {error && <p className="mt-5 text-refused">{error}</p>}
           {running && (
-            <div className="mt-8 h-[2px] w-full overflow-hidden bg-paper/10">
+            <div className="mt-8 h-0.5 w-full overflow-hidden bg-paper/10">
               <div className="h-full w-1/3 animate-[pull_1.2s_ease-in-out_infinite] bg-string" />
             </div>
           )}

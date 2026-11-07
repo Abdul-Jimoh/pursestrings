@@ -86,10 +86,10 @@ export function Nav() {
             className="relative -mr-2 grid h-11 w-11 place-items-center lg:hidden"
           >
             <span
-              className={`absolute h-[2px] w-6 bg-current transition-transform duration-300 ${open ? "rotate-45" : "-translate-y-[5px]"}`}
+              className={`absolute h-0.5 w-6 bg-current transition-transform duration-300 ${open ? "rotate-45" : "-translate-y-1.25"}`}
             />
             <span
-              className={`absolute h-[2px] w-6 bg-current transition-transform duration-300 ${open ? "-rotate-45" : "translate-y-[5px]"}`}
+              className={`absolute h-0.5 w-6 bg-current transition-transform duration-300 ${open ? "-rotate-45" : "translate-y-1.25"}`}
             />
           </button>
         </nav>
