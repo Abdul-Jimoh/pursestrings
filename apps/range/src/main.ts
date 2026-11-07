@@ -4,9 +4,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, parseDecimals } from "@pursestrings/mcp";
 import { Pursestrings } from "@pursestrings/sdk";
+import { Reports, type Route, shopRoutes } from "@pursestrings/shop";
 import { JsonRpcProvider } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
-import { Limits } from "./limits.ts";
+import { cost, Limits } from "./limits.ts";
 import { openAiCompatible } from "./model.ts";
 import { rangeServer } from "./server.ts";
 import { Store } from "./store.ts";
@@ -50,14 +51,57 @@ const limits = new Limits({
 const store = new Store(env("RANGE_DATA", join(import.meta.dirname, "../data/attacks.jsonl")));
 for (const e of store.all()) limits.record(e.account, e.costUsd, e.at);
 
+const model = openAiCompatible({
+  baseUrl: env("RANGE_MODEL_URL", "https://cloud-api.near.ai/v1"),
+  apiKey: need("RANGE_MODEL_KEY"),
+  model: env("RANGE_MODEL", "anthropic/claude-haiku-5-5"),
+  maxTokens: 1024,
+});
+
+// Names and addresses a check compares against for lookalikes.
+const KNOWN = [
+  "wrap.testnet",
+  "usdc.fakes.testnet",
+  "ps-spike-1028.testnet",
+  "ps-community-1107.testnet",
+  "shop.factory.ps-spike-1028.testnet",
+  "bounties.factory.ps-spike-1028.testnet",
+  "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+  "0x9d7ac751235b819991b3050d3f19e58a8e66ae03",
+];
+
+const routes: Route[] = [];
+const shopAccount = process.env.SHOP_ACCOUNT;
+if (shopAccount) {
+  const shop = new Pursestrings(rpc, shopAccount);
+  const shopKey =
+    process.env.SHOP_AGENT_KEY ??
+    JSON.parse(readFileSync(need("SHOP_AGENT_KEY_FILE"), "utf8")).private_key;
+  const { route, tick } = shopRoutes({
+    shop,
+    agent: shop.agent(shopKey),
+    model,
+    reports: new Reports(env("SHOP_DATA", join(import.meta.dirname, "../data/reports.jsonl"))),
+    sources: {
+      nearRpc: rpc,
+      nearTx: env("NEAR_TX_API", "https://tx.test.fastnear.com"),
+      blockscout: env("BLOCKSCOUT", "https://base-sepolia.blockscout.com"),
+      known: env("SHOP_KNOWN", KNOWN.join(",")).split(","),
+    },
+    ...(process.env.BOARD_ACCOUNT
+      ? { board: new Pursestrings(rpc, process.env.BOARD_ACCOUNT) }
+      : {}),
+    allow: (account) => limits.check(account),
+    record: (account, usage) => limits.record(account, cost(usage, pricing)),
+  });
+  routes.push(route);
+  setInterval(() => tick().catch((e) => console.error("shop:", e)), 5_000);
+}
+
 const provider = new JsonRpcProvider({ url: rpc });
 const server = rangeServer({
-  model: openAiCompatible({
-    baseUrl: env("RANGE_MODEL_URL", "https://cloud-api.near.ai/v1"),
-    apiKey: need("RANGE_MODEL_KEY"),
-    model: env("RANGE_MODEL", "anthropic/claude-haiku-5-5"),
-    maxTokens: 1024,
-  }),
+  model,
+  routes,
   tools,
   limits,
   store,

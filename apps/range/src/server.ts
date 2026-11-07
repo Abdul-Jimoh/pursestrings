@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Route } from "@pursestrings/shop";
 import { runAttempt } from "./agent.ts";
 import { cost, type Limits, type Pricing } from "./limits.ts";
 import type { ChatModel } from "./model.ts";
@@ -35,6 +36,8 @@ export interface RangeDeps {
   publicDir?: string;
   /** Browser origins allowed to call the API, such as https://pursestrings.site; any if unset. */
   origins?: readonly string[];
+  /** More API routes, such as the shop's; they see the signed-in account, if any. */
+  routes?: readonly Route[];
   now?: () => number;
 }
 
@@ -161,6 +164,17 @@ export function rangeServer(d: RangeDeps) {
         } finally {
           busy = false;
         }
+      }
+      const auth = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+      const signedIn = sessions.get(auth);
+      for (const route of d.routes ?? []) {
+        const out = await route({
+          method: req.method ?? "GET",
+          url,
+          account: signedIn && signedIn.until >= now() ? signedIn.account : undefined,
+          body: () => body(req),
+        });
+        if (out) return send(res, out.status, out.data);
       }
       if (req.method === "GET" && d.publicDir) {
         const path = normalize(url.pathname === "/" ? "/index.html" : url.pathname);

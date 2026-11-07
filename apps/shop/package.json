@@ -1,0 +1,20 @@
+{
+  "name": "@pursestrings/shop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Check before you pay: an agent-run shop selling plain-English checks on any NEAR account or EVM address, under a Pursestrings policy",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts"
+  },
+  "dependencies": {
+    "@pursestrings/sdk": "workspace:*",
+    "near-api-js": "7.4.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
