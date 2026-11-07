@@ -8,7 +8,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts"
+    "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts",
+    "loop": "node --experimental-strip-types --no-warnings scripts/loop.ts"
   },
   "dependencies": {
     "@pursestrings/sdk": "workspace:*",
