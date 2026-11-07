@@ -1,5 +1,5 @@
 use near_sdk::json_types::{Base58CryptoHash, U128};
-use near_sdk::{near, require};
+use near_sdk::{AccountId, near, require};
 
 use crate::ring::BUCKETS;
 use crate::types::{Asset, IntentKind, Recipient};
@@ -14,6 +14,11 @@ pub const MAX_GROUPS: usize = 8;
 pub const MAX_GROUP_NAME_BYTES: usize = 32;
 /// Beyond this a decimals gap can't be rescaled in a u128.
 pub const MAX_DECIMALS: u8 = 30;
+/// Every share is paid in the same receipt as the sale, so the count bounds the buyer's gas.
+pub const MAX_SHARES: usize = 4;
+pub const MAX_COUNCIL: usize = 16;
+pub const MAX_TIERS: usize = 8;
+pub const BPS: u16 = 10_000;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +96,60 @@ pub struct MinRate {
     pub rate: Rate,
 }
 
+/// The lowest price the agent may quote in an asset. With no floor it can't sell in that asset.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PriceFloor {
+    pub asset: Asset,
+    pub min: U128,
+}
+
+/// A fixed share of every sale, paid to `account` in the same receipt the payment lands in.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Share {
+    pub account: AccountId,
+    pub bps: u16,
+}
+
+/// How much the agent may refund in an asset over a rolling window. With none it can't refund.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefundLimit {
+    pub asset: Asset,
+    pub window: WindowLimit,
+}
+
+/// From `points` paid bounties up: payouts up to `auto_up_to` go through on their own, up to
+/// `council_up_to` need one council member, and anything larger needs the owner.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tier {
+    pub points: u32,
+    pub auto_up_to: U128,
+    pub council_up_to: U128,
+}
+
+/// Bounty payouts in `asset` are routed by the claimant's earned points instead of the
+/// recipient allowlist.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrustRule {
+    pub asset: Asset,
+    pub tiers: Vec<Tier>,
+}
+
+impl TrustRule {
+    /// `(auto_up_to, council_up_to)` for someone with `points`; nothing below the first tier.
+    pub fn limits(&self, points: u32) -> (u128, u128) {
+        self.tiers
+            .iter()
+            .filter(|t| t.points <= points)
+            .max_by_key(|t| t.points)
+            .map_or((0, 0), |t| (t.auto_up_to.0, t.council_up_to.0))
+    }
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GasCaps {
@@ -126,6 +185,13 @@ pub struct Policy {
     pub pending_ttl_s: u32,
     pub timelock_s: u32,
     pub groups: Vec<BudgetGroup>,
+    pub floors: Vec<PriceFloor>,
+    /// What isn't shared stays in the account and is all a refund can come from.
+    pub split: Vec<Share>,
+    pub refund_limits: Vec<RefundLimit>,
+    /// Can approve mid-size bounty payouts, post bounties and freeze.
+    pub council: Vec<AccountId>,
+    pub trust: Vec<TrustRule>,
 }
 
 #[near(serializers = [borsh, json])]
@@ -182,6 +248,28 @@ pub enum PolicyOp {
     RemoveGroup {
         name: String,
     },
+    SetPriceFloor(PriceFloor),
+    RemovePriceFloor {
+        asset: Asset,
+    },
+    /// Replaces the whole split. Where revenue goes always waits for the timelock.
+    SetSplit {
+        shares: Vec<Share>,
+    },
+    SetRefundLimit(RefundLimit),
+    RemoveRefundLimit {
+        asset: Asset,
+    },
+    AddCouncil {
+        account: AccountId,
+    },
+    RemoveCouncil {
+        account: AccountId,
+    },
+    SetTrust(TrustRule),
+    RemoveTrust {
+        asset: Asset,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +316,17 @@ fn window_tighter(new: &WindowLimit, cur: &WindowLimit) -> bool {
     new.limit.0 <= cur.limit.0 && new.period_s >= cur.period_s
 }
 
+/// Limits only change at a tier's points, so comparing there covers every points value.
+fn trust_tighter(new: &TrustRule, cur: &TrustRule) -> bool {
+    std::iter::once(0)
+        .chain(new.tiers.iter().chain(&cur.tiers).map(|t| t.points))
+        .all(|pts| {
+            let (na, nc) = new.limits(pts);
+            let (ca, cc) = cur.limits(pts);
+            na <= ca && nc <= cc
+        })
+}
+
 const fn caps_tighter(new: &GasCaps, cur: &GasCaps) -> bool {
     new.max_gas_limit <= cur.max_gas_limit
         && new.max_fee_per_gas.0 <= cur.max_fee_per_gas.0
@@ -254,19 +353,32 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
         PolicyOp::SetPendingTtl { seconds } => *seconds <= p.pending_ttl_s,
         PolicyOp::SetTimelock { seconds } => *seconds >= p.timelock_s,
         PolicyOp::SetGroup(new) => p.group(&new.name).is_none_or(|cur| group_tighter(new, cur)),
+        PolicyOp::SetPriceFloor(new) => p.floor(&new.asset).is_some_and(|cur| new.min.0 >= cur.0),
+        PolicyOp::SetSplit { shares } => *shares == p.split,
+        PolicyOp::SetRefundLimit(new) => p
+            .refund_limit(&new.asset)
+            .is_some_and(|cur| window_tighter(&new.window, cur)),
+        PolicyOp::SetTrust(new) => p
+            .trust_rule(&new.asset)
+            .is_some_and(|cur| trust_tighter(new, cur)),
         PolicyOp::RemoveAsset { .. }
         | PolicyOp::RemoveRecipient(_)
         | PolicyOp::RemoveChain { .. }
         | PolicyOp::RemoveIntentKind { .. }
         | PolicyOp::RemoveMinRate { .. }
         | PolicyOp::RemoveEvmGas { .. }
+        | PolicyOp::RemovePriceFloor { .. }
+        | PolicyOp::RemoveRefundLimit { .. }
+        | PolicyOp::RemoveCouncil { .. }
+        | PolicyOp::RemoveTrust { .. }
         | PolicyOp::Freeze => true,
         PolicyOp::AddRecipient(_)
         | PolicyOp::AddChain { .. }
         | PolicyOp::AddIntentKind { .. }
         | PolicyOp::Unfreeze
         | PolicyOp::Migrate { .. }
-        | PolicyOp::RemoveGroup { .. } => false,
+        | PolicyOp::RemoveGroup { .. }
+        | PolicyOp::AddCouncil { .. } => false,
     };
     if tight {
         Effect::Tighten
@@ -327,6 +439,24 @@ pub fn apply(op: PolicyOp, p: &mut Policy) {
             upsert(&mut p.groups, g, |x| x.name == name);
         }
         PolicyOp::RemoveGroup { name } => p.groups.retain(|x| x.name != name),
+        PolicyOp::SetPriceFloor(f) => {
+            let asset = f.asset.clone();
+            upsert(&mut p.floors, f, |x| x.asset == asset);
+        }
+        PolicyOp::RemovePriceFloor { asset } => p.floors.retain(|x| x.asset != asset),
+        PolicyOp::SetSplit { shares } => p.split = shares,
+        PolicyOp::SetRefundLimit(r) => {
+            let asset = r.asset.clone();
+            upsert(&mut p.refund_limits, r, |x| x.asset == asset);
+        }
+        PolicyOp::RemoveRefundLimit { asset } => p.refund_limits.retain(|x| x.asset != asset),
+        PolicyOp::AddCouncil { account } => add_unique(&mut p.council, account),
+        PolicyOp::RemoveCouncil { account } => p.council.retain(|x| *x != account),
+        PolicyOp::SetTrust(t) => {
+            let asset = t.asset.clone();
+            upsert(&mut p.trust, t, |x| x.asset == asset);
+        }
+        PolicyOp::RemoveTrust { asset } => p.trust.retain(|x| x.asset != asset),
     }
 }
 
@@ -361,7 +491,30 @@ impl Policy {
             pending_ttl_s: 86_400,
             timelock_s: 86_400,
             groups: Vec::new(),
+            floors: Vec::new(),
+            split: Vec::new(),
+            refund_limits: Vec::new(),
+            council: Vec::new(),
+            trust: Vec::new(),
         }
+    }
+
+    pub fn floor(&self, asset: &Asset) -> Option<U128> {
+        self.floors
+            .iter()
+            .find(|f| &f.asset == asset)
+            .map(|f| f.min)
+    }
+
+    pub fn refund_limit(&self, asset: &Asset) -> Option<&WindowLimit> {
+        self.refund_limits
+            .iter()
+            .find(|r| &r.asset == asset)
+            .map(|r| &r.window)
+    }
+
+    pub fn trust_rule(&self, asset: &Asset) -> Option<&TrustRule> {
+        self.trust.iter().find(|t| &t.asset == asset)
     }
 
     pub fn group(&self, name: &str) -> Option<&BudgetGroup> {
@@ -480,6 +633,47 @@ impl Policy {
             require!(v.max > 0 && period_ok(v.period_s), "bad velocity");
         }
         require!(self.pending_ttl_s > 0, "pending ttl must be positive");
+        let near_side = |a: &Asset| matches!(a, Asset::Near | Asset::Nep141 { .. });
+        require!(
+            self.floors.len() <= MAX_ASSETS
+                && all_unique(&self.floors, |f| f.asset.clone())
+                && self
+                    .floors
+                    .iter()
+                    .all(|f| near_side(&f.asset) && f.min.0 > 0),
+            "price floors: unique NEAR or NEP-141 assets, positive"
+        );
+        require!(
+            self.split.len() <= MAX_SHARES
+                && all_unique(&self.split, |s| s.account.clone())
+                && self.split.iter().all(|s| s.bps > 0)
+                && self.split.iter().map(|s| u32::from(s.bps)).sum::<u32>() <= u32::from(BPS),
+            "split: at most 4 accounts, positive shares summing to at most 10000 bps"
+        );
+        require!(
+            self.refund_limits.len() <= MAX_ASSETS
+                && all_unique(&self.refund_limits, |r| r.asset.clone())
+                && self
+                    .refund_limits
+                    .iter()
+                    .all(|r| near_side(&r.asset) && period_ok(r.window.period_s)),
+            "refund limits: unique NEAR or NEP-141 assets, period a multiple of 24 s"
+        );
+        require!(
+            self.council.len() <= MAX_COUNCIL && all_unique(&self.council, Clone::clone),
+            "council: at most 16 unique accounts"
+        );
+        require!(
+            self.trust.len() <= MAX_ASSETS
+                && all_unique(&self.trust, |t| t.asset.clone())
+                && self.trust.iter().all(|t| {
+                    near_side(&t.asset)
+                        && t.tiers.len() <= MAX_TIERS
+                        && all_unique(&t.tiers, |x| x.points)
+                        && t.tiers.iter().all(|x| x.auto_up_to.0 <= x.council_up_to.0)
+                }),
+            "trust: unique NEAR or NEP-141 assets, at most 8 tiers, auto <= council"
+        );
     }
 }
 
@@ -556,6 +750,11 @@ pub mod tests {
             pending_ttl_s: 3_600,
             timelock_s: 86_400,
             groups: vec![],
+            floors: vec![],
+            split: vec![],
+            refund_limits: vec![],
+            council: vec![],
+            trust: vec![],
         }
     }
 
@@ -904,6 +1103,101 @@ pub mod tests {
     fn rejects_duplicate_assets() {
         let mut p = base_policy();
         p.assets.push(p.assets[0].clone());
+        p.assert_valid();
+    }
+
+    #[test]
+    fn shop_and_board_rules_classify() {
+        use near_sdk::AccountId;
+        let acct = |s: &str| s.parse::<AccountId>().unwrap();
+        let mut p = base_policy();
+        p.floors.push(PriceFloor {
+            asset: usdc(),
+            min: U128(100),
+        });
+        p.split.push(Share {
+            account: acct("dao.near"),
+            bps: 2_000,
+        });
+        p.council.push(acct("c.near"));
+        let tier = |points, auto_up_to, council_up_to| Tier {
+            points,
+            auto_up_to: U128(auto_up_to),
+            council_up_to: U128(council_up_to),
+        };
+        p.trust.push(TrustRule {
+            asset: usdc(),
+            tiers: vec![tier(0, 0, 20), tier(3, 10, 30)],
+        });
+        let floor = |min| {
+            PolicyOp::SetPriceFloor(PriceFloor {
+                asset: usdc(),
+                min: U128(min),
+            })
+        };
+        assert_eq!(classify(&floor(150), &p), Effect::Tighten);
+        assert_eq!(classify(&floor(99), &p), Effect::Loosen);
+        let same = PolicyOp::SetSplit {
+            shares: p.split.clone(),
+        };
+        assert_eq!(classify(&same, &p), Effect::Tighten);
+        let redirect = PolicyOp::SetSplit {
+            shares: vec![Share {
+                account: acct("thief.near"),
+                bps: 2_000,
+            }],
+        };
+        assert_eq!(classify(&redirect, &p), Effect::Loosen);
+        let trust = |tiers| {
+            PolicyOp::SetTrust(TrustRule {
+                asset: usdc(),
+                tiers,
+            })
+        };
+        assert_eq!(
+            classify(&trust(vec![tier(0, 0, 20), tier(5, 10, 30)]), &p),
+            Effect::Tighten,
+            "more points for the same limits"
+        );
+        assert_eq!(
+            classify(&trust(vec![tier(0, 0, 20), tier(2, 10, 30)]), &p),
+            Effect::Loosen,
+            "fewer points for the same limits"
+        );
+        assert_eq!(
+            classify(&trust(vec![tier(0, 1, 20), tier(3, 10, 30)]), &p),
+            Effect::Loosen
+        );
+        assert_eq!(
+            classify(
+                &PolicyOp::AddCouncil {
+                    account: acct("x.near")
+                },
+                &p
+            ),
+            Effect::Loosen
+        );
+        assert_eq!(
+            classify(
+                &PolicyOp::RemoveCouncil {
+                    account: acct("c.near")
+                },
+                &p
+            ),
+            Effect::Tighten
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "split")]
+    fn a_split_over_everything_is_invalid() {
+        let mut p = base_policy();
+        for (a, bps) in [("a.near", 6_000), ("b.near", 4_001)] {
+            p.split.push(Share {
+                account: a.parse().unwrap(),
+                bps,
+            });
+        }
         p.assert_valid();
     }
 }

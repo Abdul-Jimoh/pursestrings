@@ -9,7 +9,7 @@ use crate::policy::{Effect, MAX_OPS_PER_PROPOSAL, PolicyOp, apply, classify};
 use crate::types::Asset;
 use crate::{Agent, Proposal, Pursestrings, PursestringsExt, now_s};
 
-pub const AGENT_METHODS: &str = "request_spend,cancel_request";
+pub const AGENT_METHODS: &str = "request_spend,cancel_request,quote,deliver,refund";
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 struct CodeHashArgs {
@@ -74,9 +74,10 @@ impl Pursestrings {
         self.transfer(&asset, &owner, amount, "pursestrings:withdraw".to_string())
     }
 
+    /// Instant, and any council member can pull it too. Unfreezing waits for the timelock.
     #[payable]
     pub fn freeze(&mut self) {
-        self.assert_owner();
+        self.assert_owner_or_council();
         self.apply_now(vec![PolicyOp::Freeze]);
     }
 

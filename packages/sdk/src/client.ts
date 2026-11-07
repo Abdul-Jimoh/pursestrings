@@ -7,11 +7,16 @@ import {
 } from "near-api-js";
 import type {
   Asset,
+  Bounty,
   BudgetStatus,
   Decision,
+  Order,
   PolicyOp,
+  QuoteDecision,
+  RefundDecision,
   Request,
   SpendRequest,
+  TrustRecord,
   WindowStatus,
 } from "./types.ts";
 
@@ -110,6 +115,27 @@ export class Pursestrings {
   owner() {
     return this.view<string>("owner");
   }
+  order(orderId: number) {
+    return this.view<Order | null>("order", { order_id: orderId });
+  }
+  recentOrders(limit = 20, before?: number) {
+    return this.view<[number, Order][]>("recent_orders", {
+      limit,
+      ...(before === undefined ? {} : { before }),
+    });
+  }
+  bounty(id: number) {
+    return this.view<Bounty | null>("bounty", { id });
+  }
+  recentBounties(limit = 20, before?: number) {
+    return this.view<[number, Bounty][]>("recent_bounties", {
+      limit,
+      ...(before === undefined ? {} : { before }),
+    });
+  }
+  record(account: string) {
+    return this.view<TrustRecord>("record", { account });
+  }
 
   /** The agent signs with its function-call key on the account itself. */
   agent(secretKey: string): Agent {
@@ -174,6 +200,38 @@ export class Caller {
   expireRequest(reqId: number) {
     return this.call<void>("expire_request", { req_id: reqId });
   }
+  /** Pays a NEAR quote; any extra comes back. */
+  payNear(orderId: number, yocto: bigint) {
+    return this.call<void>("pay", { order_id: orderId }, { deposit: yocto, tgas: 100n });
+  }
+  /** Pays a NEP-141 quote through the token; a payment that doesn't match comes back in full. */
+  payToken(token: string, orderId: number, amount: bigint) {
+    return this.call<string>(
+      "ft_transfer_call",
+      { receiver_id: this.purse.accountId, amount: amount.toString(), msg: String(orderId) },
+      { contractId: token, deposit: ONE_YOCTO, tgas: 200n },
+    );
+  }
+  claimBounty(id: number) {
+    return this.call<void>("claim_bounty", { id }, { deposit: ONE_YOCTO, tgas: 30n });
+  }
+  submitBounty(id: number, work: string) {
+    return this.call<void>("submit_bounty", { id, work }, { deposit: ONE_YOCTO, tgas: 30n });
+  }
+  /** Council members: approve a payout within their tier, post bounties, or freeze. */
+  councilApprove(reqId: number) {
+    return this.call<void>("council_approve", { req_id: reqId }, { deposit: ONE_YOCTO });
+  }
+  postBounty(title: string, asset: Asset, reward: bigint) {
+    return this.call<number>(
+      "post_bounty",
+      { title, asset, reward: reward.toString() },
+      { deposit: ONE_YOCTO, tgas: 30n },
+    );
+  }
+  freeze() {
+    return this.call<void>("freeze", {}, { deposit: ONE_YOCTO, tgas: 30n });
+  }
 }
 
 export class Agent extends Caller {
@@ -183,6 +241,24 @@ export class Agent extends Caller {
   }
   cancelRequest(reqId: number) {
     return this.call<void>("cancel_request", { req_id: reqId }, { tgas: 30n });
+  }
+  /** Offers `item` at `price`; the contract refuses anything under the owner's floor. */
+  quote(buyer: string | null, asset: Asset, price: bigint, item: string) {
+    return this.call<QuoteDecision>(
+      "quote",
+      { buyer, asset, price: price.toString(), item },
+      { tgas: 30n },
+    );
+  }
+  deliver(orderId: number, receipt: string) {
+    return this.call<void>("deliver", { order_id: orderId, receipt }, { tgas: 30n });
+  }
+  refund(orderId: number, amount: bigint, reason: string) {
+    return this.call<RefundDecision>(
+      "refund",
+      { order_id: orderId, amount: amount.toString(), reason },
+      { tgas: 60n },
+    );
   }
 }
 

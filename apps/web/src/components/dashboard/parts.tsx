@@ -7,7 +7,7 @@ import { blob } from "@/lib/site";
 export type Act = (label: string, method: string, args?: Record<string, unknown>) => void;
 
 export const waiting = (req: Request) =>
-  req.status === "PendingCosign" || req.status === "PendingRisk";
+  req.status === "PendingCosign" || req.status === "PendingCouncil" || req.status === "PendingRisk";
 
 export const lapsed = (req: Request, now: number) =>
   waiting(req) && req.expires_at !== null && req.expires_at <= now;
@@ -41,6 +41,7 @@ export const money = (req: Request) => {
 
 const STATUS: Record<string, { text: string; color: string }> = {
   PendingCosign: { text: "Waiting for you", color: "var(--color-wait)" },
+  PendingCouncil: { text: "Waiting for a council member", color: "var(--color-wait)" },
   PendingRisk: { text: "Waiting for you", color: "var(--color-wait)" },
   Executing: { text: "Sending", color: "var(--color-paper)" },
   Signed: { text: "Signed, not settled", color: "var(--color-paper)" },
@@ -253,7 +254,7 @@ export function Queue({
             </div>
             <ul className="mt-4 flex flex-col gap-2">
               {p.ops.map((op) => (
-                <li key={JSON.stringify(op)} className="break-words leading-relaxed">
+                <li key={JSON.stringify(op)} className="wrap-break-word leading-relaxed">
                   {describe(op)}
                 </li>
               ))}
@@ -311,7 +312,7 @@ export function Stream({ snap, now }: { snap: Snapshot; now: number }) {
             <span className="eyebrow row-span-2 self-start text-right" style={{ color: s.color }}>
               {s.text}
             </span>
-            <span className="min-w-0 break-words leading-snug">
+            <span className="min-w-0 wrap-break-word leading-snug">
               <span className="font-bold">{money(req)}</span>
               <span className="text-paper/70"> to {destName(req.spend.dest)}</span>
               {req.spend.purpose && <span className="text-paper/50"> · {req.spend.purpose}</span>}

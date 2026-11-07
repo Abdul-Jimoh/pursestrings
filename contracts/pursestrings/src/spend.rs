@@ -1,7 +1,8 @@
 use near_sdk::json_types::U128;
 use near_sdk::serde::Serialize;
 use near_sdk::{
-    AccountId, Gas, NearToken, Promise, PublicKey, env, is_promise_success, near, require,
+    AccountId, Gas, NearToken, Promise, PublicKey, assert_one_yocto, env, is_promise_success, near,
+    require,
 };
 
 use crate::events::Event;
@@ -38,6 +39,7 @@ struct MtTransferArgs<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Route {
     Execute,
+    Council,
     Cosign,
     Risk,
 }
@@ -123,7 +125,9 @@ fn window_charges(
     Ok(out)
 }
 
-fn check_dest(p: &Policy, req: &SpendRequest) -> Result<(), DenyReason> {
+/// A bounty payout's recipient is its claimant, checked against the bounty instead of the
+/// allowlist.
+fn check_dest(p: &Policy, req: &SpendRequest, bounty: bool) -> Result<(), DenyReason> {
     match (&req.asset, &req.dest) {
         (Asset::Near | Asset::Nep141 { .. }, Dest::Near { .. }) => {}
         (Asset::Evm { chain_id: a, .. }, Dest::Evm { chain_id: b, .. }) if a == b => {
@@ -150,7 +154,8 @@ fn check_dest(p: &Policy, req: &SpendRequest) -> Result<(), DenyReason> {
         }
         _ => return Err(DenyReason::AssetDestMismatch),
     }
-    if let Some(r) = req.dest.recipient()
+    if !bounty
+        && let Some(r) = req.dest.recipient()
         && !p.recipients.contains(&r)
     {
         return Err(DenyReason::RecipientNotAllowed);
@@ -189,18 +194,23 @@ impl Pursestrings {
     #[payable]
     pub fn approve_request(&mut self, req_id: u64) {
         self.assert_owner();
-        require!(!self.policy.frozen, "frozen");
-        let req = self.requests.get_mut(&req_id).expect("unknown request");
-        require!(req.status.is_pending(), "not pending");
-        require!(req.expires_at.is_none_or(|t| now_s() < t), "expired");
-        req.status = RequestStatus::Executing;
-        let spend = req.spend.clone();
-        Event::RequestStatus {
-            req_id,
-            status: RequestStatus::Executing,
-        }
-        .emit();
-        self.execute(req_id, &spend).detach();
+        self.start_pending(req_id);
+    }
+
+    /// One council member is enough for a payout their tier allows; larger ones need the owner.
+    #[payable]
+    pub fn council_approve(&mut self, req_id: u64) {
+        assert_one_yocto();
+        require!(
+            self.policy.council.contains(&env::predecessor_account_id()),
+            "council only"
+        );
+        let req = self.requests.get(&req_id).expect("unknown request");
+        require!(
+            req.status == RequestStatus::PendingCouncil,
+            "needs the owner, not the council"
+        );
+        self.start_pending(req_id);
     }
 
     #[payable]
@@ -250,12 +260,31 @@ impl Pursestrings {
             RequestStatus::Failed
         };
         let status = req.status;
+        let bounty = req.spend.bounty;
         if ok {
             req.reservations = reservations;
         } else {
             self.release(&reservations);
         }
         Event::RequestStatus { req_id, status }.emit();
+        if let Some(id) = bounty {
+            self.bounty_settled(id, ok);
+        }
+    }
+
+    fn start_pending(&mut self, req_id: u64) {
+        require!(!self.policy.frozen, "frozen");
+        let req = self.requests.get_mut(&req_id).expect("unknown request");
+        require!(req.status.is_pending(), "not pending");
+        require!(req.expires_at.is_none_or(|t| now_s() < t), "expired");
+        req.status = RequestStatus::Executing;
+        let spend = req.spend.clone();
+        Event::RequestStatus {
+            req_id,
+            status: RequestStatus::Executing,
+        }
+        .emit();
+        self.execute(req_id, &spend).detach();
     }
 
     pub(crate) fn evaluate(
@@ -275,7 +304,11 @@ impl Pursestrings {
             return Err(DenyReason::DuplicateIdempotencyKey { req_id: *id });
         }
         let rule = p.rule(&req.asset).ok_or(DenyReason::AssetNotAllowed)?;
-        check_dest(p, req)?;
+        let trust = req
+            .bounty
+            .map(|id| self.bounty_limits(id, req))
+            .transpose()?;
+        check_dest(p, req, trust.is_some())?;
         let amount = req.amount.0;
         if amount > rule.per_tx_cap.0 {
             return Err(DenyReason::OverPerTxCap {
@@ -342,7 +375,12 @@ impl Pursestrings {
         } else if above(rule.cosign_above) {
             Route::Cosign
         } else {
-            Route::Execute
+            match trust {
+                Some((auto, _)) if amount <= auto => Route::Execute,
+                Some((_, council)) if amount <= council => Route::Council,
+                Some(_) => Route::Cosign,
+                None => Route::Execute,
+            }
         })
     }
 
@@ -404,6 +442,14 @@ impl Pursestrings {
                 None,
                 Decision::Approved { req_id },
             ),
+            Route::Council => {
+                let expires_at = now + u64::from(p.pending_ttl_s);
+                (
+                    RequestStatus::PendingCouncil,
+                    Some(expires_at),
+                    Decision::NeedsCouncil { req_id, expires_at },
+                )
+            }
             Route::Cosign | Route::Risk => {
                 let expires_at = now + u64::from(p.pending_ttl_s);
                 (
@@ -426,6 +472,9 @@ impl Pursestrings {
                 intent: None,
             },
         );
+        if let Some(id) = req.bounty {
+            self.bounty_paying(id, req_id);
+        }
         if status == RequestStatus::Executing {
             self.execute(req_id, req).detach();
         }
@@ -437,8 +486,12 @@ impl Pursestrings {
         require!(req.status.is_pending(), "not pending");
         req.status = status;
         let reservations = std::mem::take(&mut req.reservations);
+        let bounty = req.spend.bounty;
         self.release(&reservations);
         Event::RequestStatus { req_id, status }.emit();
+        if let Some(id) = bounty {
+            self.bounty_settled(id, false);
+        }
     }
 
     fn execute(&mut self, req_id: u64, spend: &SpendRequest) -> Promise {
@@ -505,7 +558,7 @@ impl Pursestrings {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{AccountId, testing_env};
 
@@ -514,17 +567,17 @@ mod tests {
     use crate::policy::{AssetRule, MinRate, Rate};
     use crate::types::EvmAddress;
 
-    fn purse() -> AccountId {
+    pub(crate) fn purse() -> AccountId {
         "purse.near".parse().unwrap()
     }
 
-    fn agent_pk() -> PublicKey {
+    pub(crate) fn agent_pk() -> PublicKey {
         "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
             .parse()
             .unwrap()
     }
 
-    fn as_agent(now_s: u64) {
+    pub(crate) fn as_agent(now_s: u64) {
         testing_env!(
             VMContextBuilder::new()
                 .current_account_id(purse())
@@ -535,7 +588,7 @@ mod tests {
         );
     }
 
-    fn contract(policy: Policy) -> Pursestrings {
+    pub(crate) fn contract(policy: Policy) -> Pursestrings {
         as_agent(1_000);
         let mut c = Pursestrings::new(
             "owner.near".parse().unwrap(),
@@ -563,6 +616,7 @@ mod tests {
             },
             purpose: String::new(),
             idempotency_key: key.into(),
+            bounty: None,
         }
     }
 
@@ -698,6 +752,7 @@ mod tests {
             }),
             purpose: String::new(),
             idempotency_key: "swap".into(),
+            bounty: None,
         }
     }
 
@@ -784,6 +839,7 @@ mod tests {
             }),
             purpose: String::new(),
             idempotency_key: "w".into(),
+            bounty: None,
         };
         assert_eq!(
             c.evaluate(&agent_pk(), &withdraw(ours), 1_000),
@@ -824,6 +880,7 @@ mod tests {
             dest: Dest::Evm { chain_id, to },
             purpose: String::new(),
             idempotency_key: "e".into(),
+            bounty: None,
         };
         let c = contract(p.clone());
         assert_eq!(
@@ -890,6 +947,7 @@ mod tests {
             dest: Dest::Evm { chain_id: 1, to },
             purpose: String::new(),
             idempotency_key: "t".into(),
+            bounty: None,
         };
         let c = contract(p.clone());
         assert_eq!(

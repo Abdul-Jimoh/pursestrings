@@ -130,6 +130,10 @@ pub struct SpendRequest {
     pub dest: Dest,
     pub purpose: String,
     pub idempotency_key: String,
+    /// Pays out this bounty: the recipient must be its claimant and the amount at most its
+    /// reward, and the claimant's earned trust decides who approves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty: Option<u64>,
 }
 
 impl SpendRequest {
@@ -248,21 +252,41 @@ pub enum DenyReason {
     NoGasBudget,
     /// A swap needs the account's MPC key registered on `intents.near` first.
     IntentsKeyMissing,
+    /// The bounty doesn't exist, isn't submitted, or the payout doesn't match it.
+    BountyMismatch,
+    /// Bounty payouts need a trust rule for the asset.
+    NoTrustRule,
 }
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Decision {
-    Approved { req_id: u64 },
-    NeedsCosign { req_id: u64, expires_at: u64 },
-    NeedsRisk { req_id: u64, expires_at: u64 },
-    Denied { reason: DenyReason },
+    Approved {
+        req_id: u64,
+    },
+    NeedsCosign {
+        req_id: u64,
+        expires_at: u64,
+    },
+    /// One council member's approval is enough.
+    NeedsCouncil {
+        req_id: u64,
+        expires_at: u64,
+    },
+    NeedsRisk {
+        req_id: u64,
+        expires_at: u64,
+    },
+    Denied {
+        reason: DenyReason,
+    },
 }
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RequestStatus {
     PendingCosign,
+    PendingCouncil,
     PendingRisk,
     Executing,
     /// EVM or swap: signed; the budget stays reserved until the outcome is proven.
@@ -281,7 +305,10 @@ pub enum RequestStatus {
 
 impl RequestStatus {
     pub const fn is_pending(self) -> bool {
-        matches!(self, Self::PendingCosign | Self::PendingRisk)
+        matches!(
+            self,
+            Self::PendingCosign | Self::PendingCouncil | Self::PendingRisk
+        )
     }
 
     pub const fn is_terminal(self) -> bool {
@@ -304,6 +331,7 @@ pub enum UsageKey {
     Velocity { period_s: u32 },
     Fee { period_s: u32 },
     Group { name: String, period_s: u32 },
+    Refund { asset: Asset, period_s: u32 },
 }
 
 #[near(serializers = [borsh, json])]

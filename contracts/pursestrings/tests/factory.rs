@@ -133,7 +133,7 @@ impl Setup {
         Ok(Contract(self.factory.clone())
             .call_function_raw("create", args)
             .transaction()
-            .deposit(NearToken::from_near(5))
+            .deposit(NearToken::from_near(7))
             .gas(NearGas::from_tgas(300))
             .with_signer(self.creator.clone(), self.root.clone())
             .send_to(&self.net)

@@ -1,9 +1,11 @@
 mod admin;
+pub mod bounty;
 mod events;
 mod evm;
 mod intents;
 pub mod policy;
 mod ring;
+pub mod sales;
 mod spend;
 pub mod types;
 
@@ -13,9 +15,11 @@ use near_sdk::{
     AccountId, BorshStorageKey, PanicOnDefault, PublicKey, assert_one_yocto, env, near, require,
 };
 
+use crate::bounty::{Bounty, Record};
 use crate::events::Event;
 use crate::policy::{MAX_OPS_PER_PROPOSAL, Policy, PolicyOp, WindowLimit, apply};
 use crate::ring::Ring;
+use crate::sales::Order;
 use crate::types::{Asset, Request, UsageKey};
 
 /// The most request ids one `recent_requests` call scans, so a view stays well inside its gas.
@@ -32,6 +36,10 @@ enum StorageKey {
     EvmNonces,
     EvmOpen,
     IntentsOpen,
+    Orders,
+    Unpaid,
+    Bounties,
+    Reputation,
 }
 
 #[near(serializers = [borsh, json])]
@@ -94,6 +102,14 @@ pub struct Pursestrings {
     intents_key: Option<PublicKey>,
     /// Swaps sent for signing whose outcome isn't settled yet.
     intents_open: IterableSet<u64>,
+    orders: LookupMap<u64, Order>,
+    next_order_id: u64,
+    open_quotes: u32,
+    /// Sale shares whose transfer failed, kept until someone retries them.
+    unpaid: LookupMap<(AccountId, Asset), U128>,
+    bounties: LookupMap<u64, Bounty>,
+    next_bounty_id: u64,
+    reputation: LookupMap<AccountId, Record>,
 }
 
 pub(crate) fn now_s() -> u64 {
@@ -141,6 +157,13 @@ impl Pursestrings {
             intents,
             intents_key: None,
             intents_open: IterableSet::new(StorageKey::IntentsOpen),
+            orders: LookupMap::new(StorageKey::Orders),
+            next_order_id: 0,
+            open_quotes: 0,
+            unpaid: LookupMap::new(StorageKey::Unpaid),
+            bounties: LookupMap::new(StorageKey::Bounties),
+            next_bounty_id: 0,
+            reputation: LookupMap::new(StorageKey::Reputation),
         }
     }
 

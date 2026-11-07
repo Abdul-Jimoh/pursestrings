@@ -48,7 +48,15 @@ async fn inv1_agent_key_cannot_move_funds() -> TestResult {
     assert_eq!(fc.receiver_id, env.purse.to_string());
     assert_eq!(
         fc.method_names,
-        vec!["request_spend".to_string(), "cancel_request".to_string()]
+        [
+            "request_spend",
+            "cancel_request",
+            "quote",
+            "deliver",
+            "refund"
+        ]
+        .map(String::from)
+        .to_vec()
     );
     assert_eq!(fc.allowance.map(|a| a.as_yoctonear()), Some(NEAR));
 

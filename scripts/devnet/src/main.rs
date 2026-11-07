@@ -248,7 +248,7 @@ async fn main() -> Result {
     Contract(factory.clone())
         .call_function_raw("create", create)
         .transaction()
-        .deposit(NearToken::from_near(6))
+        .deposit(NearToken::from_near(8))
         .gas(NearGas::from_tgas(300))
         .with_signer(owner.clone(), n.root.clone())
         .send_to(&n.net)

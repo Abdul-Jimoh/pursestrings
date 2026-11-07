@@ -5,7 +5,7 @@
    request with raw_tx: rejected: raw_tx is not a field
    request with payload_hash: rejected: payload_hash is not a field
    agent key calls the MPC signer directly: refused by the protocol: true
-   the agent key can only call request_spend and cancel_request on procurement.factory.sandbox
+   the agent key can only call request_spend, cancel_request, quote, deliver, refund on procurement.factory.sandbox
    signing requests reached the MPC signer: 0
 4. A malicious "raise the limit" change
    proposed with the agent key: refused by the protocol: true

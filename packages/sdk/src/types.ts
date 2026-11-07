@@ -24,6 +24,8 @@ export interface SpendRequest {
   dest: Dest;
   purpose: string;
   idempotency_key: string;
+  /** Pays out this bounty: to its claimant, at most its reward, routed by earned trust. */
+  bounty?: number;
 }
 
 export type DenyReason =
@@ -39,6 +41,8 @@ export type DenyReason =
   | "GasCapsMissing"
   | "NoGasBudget"
   | "IntentsKeyMissing"
+  | "BountyMismatch"
+  | "NoTrustRule"
   | { DuplicateIdempotencyKey: { req_id: number } }
   | { OverPerTxCap: { cap: U128 } }
   | { Cooldown: { retry_at: number } }
@@ -49,11 +53,13 @@ export type DenyReason =
 export type Decision =
   | { Approved: { req_id: number } }
   | { NeedsCosign: { req_id: number; expires_at: number } }
+  | { NeedsCouncil: { req_id: number; expires_at: number } }
   | { NeedsRisk: { req_id: number; expires_at: number } }
   | { Denied: { reason: DenyReason } };
 
 export type RequestStatus =
   | "PendingCosign"
+  | "PendingCouncil"
   | "PendingRisk"
   | "Executing"
   | "Signed"
@@ -107,3 +113,58 @@ export interface BudgetStatus {
 
 /** A policy change, as `propose` takes it. Kept open: the contract validates the shape. */
 export type PolicyOp = Record<string, unknown> | "Freeze" | "Unfreeze";
+
+export type QuoteDenial =
+  | "Frozen"
+  | "NotForSale"
+  | "TooManyOpenQuotes"
+  | { BelowFloor: { floor: U128 } };
+
+export type QuoteDecision =
+  | { Quoted: { order_id: number; expires_at: number } }
+  | { Denied: { reason: QuoteDenial } };
+
+export type RefundDenial =
+  | "Frozen"
+  | "NotPaid"
+  | "NoRefundLimit"
+  | { OverKept: { max: U128 } }
+  | { OverWindow: { period_s: number; remaining: U128 } };
+
+export type RefundDecision = "Refunded" | { Denied: { reason: RefundDenial } };
+
+export type OrderStatus = "Quoted" | "Paid" | "Delivered";
+
+export interface Order {
+  buyer: string | null;
+  asset: Asset;
+  price: U128;
+  item: string;
+  status: OrderStatus;
+  quoted_at: number;
+  expires_at: number;
+  payer: string | null;
+  paid_at: number | null;
+  kept: U128;
+  refunded: U128;
+  receipt: string | null;
+}
+
+export type BountyStatus = "Open" | "Claimed" | "Submitted" | "Paying" | "Paid" | "Closed";
+
+export interface Bounty {
+  title: string;
+  asset: Asset;
+  reward: U128;
+  poster: string;
+  posted_at: number;
+  status: BountyStatus;
+  claimant: string | null;
+  work: string | null;
+  req_id: number | null;
+}
+
+export interface TrustRecord {
+  points: number;
+  bounties: number[];
+}

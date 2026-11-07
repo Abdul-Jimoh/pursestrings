@@ -19,7 +19,7 @@ The agent gets no key that can move money. It gets a NEAR access key that can on
 `request_spend` on its Pursestrings account, a contract the owner controls. The contract checks
 each request against the owner's policy and pays it itself:
 
-- **On NEAR**, as a native or NEP-141 transfer ([spend.rs](contracts/pursestrings/src/spend.rs#L165)).
+- **On NEAR**, as a native or NEP-141 transfer ([spend.rs](contracts/pursestrings/src/spend.rs#L170)).
 - **On any EVM chain**, by building the EIP-1559 transaction from typed fields
   ([evm.rs:99](contracts/pursestrings/src/evm.rs#L99)) and having NEAR's MPC network sign it for
   the account's own derived address through Chain Signatures
@@ -29,10 +29,10 @@ each request against the owner's policy and pays it itself:
   ([intents.rs:128](contracts/pursestrings/src/intents.rs#L128)).
 
 The policy has per-payment caps, rolling windows per asset, budget groups that share one window
-across chains ([policy.rs:48](contracts/pursestrings/src/policy.rs#L48)), recipient and chain
+across chains ([policy.rs:53](contracts/pursestrings/src/policy.rs#L53)), recipient and chain
 allowlists, a co-sign line, minimum swap rates, a velocity limit and a fee budget. Making the
 policy stricter applies at once. Making it looser waits out a timelock. Every request, decision
-and execution is a NEP-297 event ([events.rs](contracts/pursestrings/src/events.rs#L8)).
+and execution is a NEP-297 event ([events.rs](contracts/pursestrings/src/events.rs#L10)).
 
 The seven security invariants, where each is enforced and the test that checks it, are in
 [THREAT_MODEL.md](THREAT_MODEL.md).
@@ -183,7 +183,7 @@ On testnet the Range account uses 443,759 bytes of storage, about 4.4 NEAR of st
 all of it the 439 KB contract. Gas for each request comes out of the agent key's allowance (1 NEAR
 on the Range account), and deposits the contract attaches, such as MPC signing fees, come out of the
 policy's fee budget, so a compromised agent can't drain NEAR through fees
-([`fee_budget_caps_contract_paid_deposits`](contracts/pursestrings/src/spend.rs#L622),
+([`fee_budget_caps_contract_paid_deposits`](contracts/pursestrings/src/spend.rs#L676),
 [`evm_gas_budget_stops_fee_spam`](contracts/pursestrings/tests/evm.rs#L311)).
 Mainnet costs will be measured and listed here.
 

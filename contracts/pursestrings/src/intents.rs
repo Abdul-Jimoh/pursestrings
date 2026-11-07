@@ -522,6 +522,7 @@ mod tests {
             }),
             purpose: String::new(),
             idempotency_key: "k".into(),
+            bounty: None,
         }
     }
 

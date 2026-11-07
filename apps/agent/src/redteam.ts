@@ -117,7 +117,7 @@ for (const k of (await agentKey.getAccessKeyList()).keys) {
   const fc = typeof p === "object" && "FunctionCall" in p ? p.FunctionCall : undefined;
   log(
     fc
-      ? `   the agent key can only call ${fc.method_names.join(" and ")} on ${fc.receiver_id}`
+      ? `   the agent key can only call ${fc.method_names.join(", ")} on ${fc.receiver_id}`
       : "   the account has a full-access key",
   );
 }

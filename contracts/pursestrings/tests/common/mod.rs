@@ -12,6 +12,10 @@ use testresult::TestResult;
 
 pub const NEAR: u128 = 10u128.pow(24);
 
+/// The default code of `sputnik-dao.near` (v3.2, commit 2b0f34a), fetched with `get_code` and
+/// checked against its hash `DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF`. MIT.
+pub const SPUTNIK_WASM: &[u8] = include_bytes!("../fixtures/sputnikdao2-3.2.wasm");
+
 /// near-sdk links the gas-key host functions (protocol 85), which the 2.13 node bundled with
 /// near-sandbox 0.3 rejects at deploy time.
 pub const SANDBOX_VERSION: &str = "2.14.0";
@@ -157,6 +161,21 @@ pub fn policy_ops(policy: &Value) -> Value {
     for g in list("groups") {
         ops.push(json!({ "SetGroup": g }));
     }
+    for f in list("floors") {
+        ops.push(json!({ "SetPriceFloor": f }));
+    }
+    if !list("split").is_empty() {
+        ops.push(json!({ "SetSplit": { "shares": policy["split"] } }));
+    }
+    for r in list("refund_limits") {
+        ops.push(json!({ "SetRefundLimit": r }));
+    }
+    for c in list("council") {
+        ops.push(json!({ "AddCouncil": { "account": c } }));
+    }
+    for t in list("trust") {
+        ops.push(json!({ "SetTrust": t }));
+    }
     ops.push(json!({ "SetCooldown": { "seconds": policy["cooldown_s"] } }));
     ops.push(json!({ "SetVelocity": { "velocity": policy["velocity"] } }));
     ops.push(json!({ "SetFeeBudget": policy["fee_budget"] }));
@@ -176,6 +195,8 @@ pub struct Env {
     pub mpc: AccountId,
     pub agent_key: SecretKey,
     pub agent: Arc<Signer>,
+    /// In a DAO-owned env, the DAO's only council member, whose vote passes a proposal.
+    pub council: AccountId,
 }
 
 pub type Sent = Result<TransactionResult, String>;
@@ -190,18 +211,49 @@ pub fn refused(res: Sent) -> bool {
 
 impl Env {
     pub async fn new(policy: impl FnOnce(&AccountId) -> Value) -> TestResult<Self> {
+        Self::build(policy, false).await
+    }
+
+    /// The owner is a Sputnik DAO at `dao.sandbox` whose council is `council.sandbox`, so
+    /// every owner call goes through a proposal and a vote.
+    pub async fn new_dao(policy: impl FnOnce(&AccountId) -> Value) -> TestResult<Self> {
+        Self::build(policy, true).await
+    }
+
+    async fn build(policy: impl FnOnce(&AccountId) -> Value, dao: bool) -> TestResult<Self> {
         let sandbox = start_sandbox().await?;
         let net = NetworkConfig::from_rpc_url("sandbox", sandbox.rpc_addr.parse()?);
         let root = Signer::from_secret_key(
             near_sandbox::config::DEFAULT_GENESIS_ACCOUNT_PRIVATE_KEY.parse()?,
         )?;
-        let owner: AccountId = "owner.sandbox".parse()?;
+        let council: AccountId = "council.sandbox".parse()?;
+        let owner: AccountId = if dao { "dao.sandbox" } else { "owner.sandbox" }.parse()?;
         let shop: AccountId = "shop.sandbox".parse()?;
         let attacker: AccountId = "attacker.sandbox".parse()?;
         let purse: AccountId = "purse.sandbox".parse()?;
         let mpc: AccountId = "mpc.sandbox".parse()?;
-        for id in [&owner, &shop, &attacker, &mpc] {
+        for id in [&shop, &attacker, &mpc, &council] {
             sandbox.create_account(id.clone()).send().await?;
+        }
+        sandbox
+            .create_account(owner.clone())
+            .initial_balance(NearToken::from_near(30))
+            .send()
+            .await?;
+        if dao {
+            Contract::deploy(owner.clone())
+                .use_code(SPUTNIK_WASM.to_vec())
+                .with_init_call(
+                    "new",
+                    json!({
+                        "config": { "name": "community", "purpose": "bounties", "metadata": "" },
+                        "policy": [council]
+                    }),
+                )?
+                .with_signer(root.clone())
+                .send_to(&net)
+                .await?
+                .assert_success();
         }
         Contract::deploy(mpc.clone())
             .use_code(mpc_wasm())
@@ -245,6 +297,7 @@ impl Env {
             mpc,
             agent_key,
             agent,
+            council,
         };
         env.owner_call(
             "add_agent",
@@ -267,8 +320,45 @@ impl Env {
             .map_err(|e| e.to_string())
     }
 
+    /// In a DAO-owned env this is a proposal the council votes through.
     pub async fn owner_call(&self, method: &str, args: Value) -> TestResult<TransactionResult> {
-        Ok(self.call_as(&self.owner, method, args, 1).await?)
+        if self.owner.as_str() != "dao.sandbox" {
+            return Ok(self.call_as(&self.owner, method, args, 1).await?);
+        }
+        let kind = json!({ "FunctionCall": {
+            "receiver_id": self.purse,
+            "actions": [{
+                "method_name": method,
+                "args": near_sdk::json_types::Base64VecU8::from(args.to_string().into_bytes()),
+                "deposit": "1",
+                "gas": "150000000000000"
+            }]
+        }});
+        let id: u64 = Contract(self.owner.clone())
+            .call_function(
+                "add_proposal",
+                json!({ "proposal": { "description": method, "kind": kind } }),
+            )
+            .transaction()
+            .deposit(NearToken::from_near(1))
+            .gas(NearGas::from_tgas(100))
+            .with_signer(self.council.clone(), self.root.clone())
+            .send_to(&self.net)
+            .await?
+            .assert_success()
+            .json()?;
+        let res = Contract(self.owner.clone())
+            .call_function(
+                "act_proposal",
+                json!({ "id": id, "action": "VoteApprove", "proposal": kind }),
+            )
+            .transaction()
+            .gas(NearGas::from_tgas(300))
+            .with_signer(self.council.clone(), self.root.clone())
+            .send_to(&self.net)
+            .await?;
+        self.sandbox.fast_forward(3).await?;
+        Ok(res)
     }
 
     /// Signed by the agent's function-call key on the purse account.

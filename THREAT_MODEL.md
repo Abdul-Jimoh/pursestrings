@@ -12,8 +12,10 @@ version, deploy the real contracts and drive them through signed transactions.
 
 | Actor | Holds | Can | Can't |
 |---|---|---|---|
-| Agent | A function-call key on the Pursestrings account, limited to `request_spend` and `cancel_request`, with a capped gas allowance | Ask for a payment; cancel its own pending request | Attach a deposit, call any other method, sign anything, change the policy |
+| Agent | A function-call key on the Pursestrings account, limited to `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`, with a capped gas allowance | Ask for a payment; cancel its own pending request; quote a price at or above the owner's floor; record a delivery; refund a buyer from the kept share within the refund window | Attach a deposit, call any other method, sign anything, change the policy, quote under the floor, change where sales go |
 | Owner | Their own NEAR account (a wallet) | Approve co-signs, tighten the policy instantly, propose loosening, freeze, revoke agents, withdraw to itself | Loosen anything before the timelock ends; change the code to a hash the factory didn't publish |
+| Council member | Their own NEAR account | Approve bounty payouts their tier allows, post bounties, freeze | Approve payouts above the council tier, unfreeze, change the policy |
+| Buyer or contributor | A NEAR account | Pay a quote (a wrong payment comes back in full); claim and submit a bounty | Get paid for a bounty they didn't claim, or more than its reward |
 | Relayer | Nothing | Broadcast signed EVM transactions and intents the contract already approved | Change what was signed; mark a payment done (only an MPC proof can) |
 | Anyone | A NEAR account | Call `confirm_evm`, `release_evm`, `settle_intent`, `expire_request`, `prune_requests` | Make any of those succeed without the on-chain evidence each one checks |
 
@@ -22,18 +24,20 @@ version, deploy the real contracts and drive them through signed transactions.
 ### 1. The agent's key can't move funds
 
 `add_agent` creates a function-call key whose receiver is the account itself and whose methods are
-only `request_spend` and `cancel_request`
+only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
 ([admin.rs:28](contracts/pursestrings/src/admin.rs#L28)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
-([lib.rs:290](contracts/pursestrings/src/lib.rs#L290)).
+([lib.rs:313](contracts/pursestrings/src/lib.rs#L313)). The one selling method that pays anything out, `refund`, can only
+pay whoever paid that order, only from the part of the price the account kept, and only within
+the owner's refund window ([sales.rs](contracts/pursestrings/src/sales.rs)).
 
 Test: [`inv1_agent_key_cannot_move_funds`](contracts/pursestrings/tests/invariants.rs#L37) checks
 the key's receiver, methods and allowance on-chain. It then has the agent try a raw transfer,
 five owner-only methods (with and without 1 yocto), a deposit on `request_spend`, and a
 `request_spend` from an outside account. The protocol refuses every one, and the shop's balance
 doesn't move. A spend to a recipient that isn't allowlisted is denied and logged as a NEP-297
-event. [`inv1_owner_cannot_be_the_account_itself`](contracts/pursestrings/tests/invariants.rs#L128)
+event. [`inv1_owner_cannot_be_the_account_itself`](contracts/pursestrings/tests/invariants.rs#L136)
 checks that an account can't be its own owner (agent calls arrive with the account itself as the
 caller) and that nobody can run `new` a second time.
 
@@ -57,12 +61,12 @@ Tests:
 ### 3. Loosening is time-locked; tightening, revoking and freezing are instant
 
 `propose` splits a batch with `classify`
-([policy.rs:238](contracts/pursestrings/src/policy.rs#L238)): an op that isn't provably at least
+([policy.rs:337](contracts/pursestrings/src/policy.rs#L337)): an op that isn't provably at least
 as strict as the current policy goes into the queue with an `eta`; the rest apply at once
-([admin.rs:87](contracts/pursestrings/src/admin.rs#L87)). Unfreezing and adding recipients count
+([admin.rs:88](contracts/pursestrings/src/admin.rs#L88)). Unfreezing and adding recipients count
 as loosening.
 
-Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/tests/invariants.rs#L162)
+Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/tests/invariants.rs#L170)
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it
 enforced on the next spend. In a mixed batch, the removal applies now and the new recipient
 waits, and payments to the new recipient are denied until the timelock passes.
@@ -75,10 +79,10 @@ its reservation until it's proven settled or replaced. There's no price oracle: 
 each asset's own units, and a budget group joins assets the owner declares to be the same unit.
 
 Tests:
-- [`inv4_per_asset_windows_reserve_and_release`](contracts/pursestrings/tests/invariants.rs#L258)
-- [`inv4_cosign_reserves_until_resolved`](contracts/pursestrings/tests/invariants.rs#L310)
-- [`inv4_window_rolls_over`](contracts/pursestrings/tests/invariants.rs#L364)
-- [`inv4_velocity_stops_a_drip`](contracts/pursestrings/tests/invariants.rs#L388)
+- [`inv4_per_asset_windows_reserve_and_release`](contracts/pursestrings/tests/invariants.rs#L266)
+- [`inv4_cosign_reserves_until_resolved`](contracts/pursestrings/tests/invariants.rs#L318)
+- [`inv4_window_rolls_over`](contracts/pursestrings/tests/invariants.rs#L372)
+- [`inv4_velocity_stops_a_drip`](contracts/pursestrings/tests/invariants.rs#L396)
 - [`evm_budget_is_held_until_a_cancel_is_confirmed`](contracts/pursestrings/tests/evm.rs#L327)
 - [`one_group_budget_spans_near_and_intents`](contracts/pursestrings/tests/intents.rs#L509)
 
@@ -86,17 +90,17 @@ Tests:
 
 Not built. There's no risk screener in this version. A rule's `risk_check_above` threshold routes
 the request to the owner's co-sign instead
-([spend.rs:400](contracts/pursestrings/src/spend.rs#L400)), so nothing is approved on a
+([spend.rs:438](contracts/pursestrings/src/spend.rs#L438)), so nothing is approved on a
 screener's say-so.
 
 ### 6. Kill switch
 
-`freeze` ([admin.rs:78](contracts/pursestrings/src/admin.rs#L78)) makes every request fail with
+`freeze` ([admin.rs:79](contracts/pursestrings/src/admin.rs#L79)) makes every request fail with
 `Frozen` and blocks approving pending ones. `revoke_agent`
 ([admin.rs:53](contracts/pursestrings/src/admin.rs#L53)) deletes the key in the same
 transaction. Each is one owner transaction.
 
-Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L420)
+Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
 freezes the account, sees requests and approvals refused, sees that unfreezing is queued rather
 than applied, and checks that a revoked key is gone from the account and can't call
 `request_spend`.
@@ -107,7 +111,7 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:173](contracts/pursestrings/src/admin.rs#L173)) checks with the factory that the hash
+([admin.rs:174](contracts/pursestrings/src/admin.rs#L174)) checks with the factory that the hash
 was published before deploying it. The factory's own keys are deleted after init, and its admin
 can only append hashes.
 
