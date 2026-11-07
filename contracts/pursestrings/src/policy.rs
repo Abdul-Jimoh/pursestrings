@@ -14,7 +14,7 @@ pub const MAX_GROUPS: usize = 8;
 pub const MAX_GROUP_NAME_BYTES: usize = 32;
 /// Beyond this a decimals gap can't be rescaled in a u128.
 pub const MAX_DECIMALS: u8 = 30;
-/// Every share is paid in the same receipt as the sale, so the count bounds the buyer's gas.
+/// Every share is paid out by the agent's `deliver` call, so the count bounds that call's gas.
 pub const MAX_SHARES: usize = 4;
 pub const MAX_COUNCIL: usize = 16;
 pub const MAX_TIERS: usize = 8;
@@ -192,6 +192,8 @@ pub struct Policy {
     /// Can approve mid-size bounty payouts, post bounties and freeze.
     pub council: Vec<AccountId>,
     pub trust: Vec<TrustRule>,
+    /// How long the agent has to deliver a paid order before the buyer can take it back.
+    pub delivery_s: u32,
 }
 
 #[near(serializers = [borsh, json])]
@@ -269,6 +271,9 @@ pub enum PolicyOp {
     SetTrust(TrustRule),
     RemoveTrust {
         asset: Asset,
+    },
+    SetDeliveryWindow {
+        seconds: u32,
     },
 }
 
@@ -351,6 +356,7 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
             .is_some_and(|cur| caps_tighter(&new.caps, cur)),
         PolicyOp::SetFeeBudget(new) => window_tighter(new, &p.fee_budget),
         PolicyOp::SetPendingTtl { seconds } => *seconds <= p.pending_ttl_s,
+        PolicyOp::SetDeliveryWindow { seconds } => *seconds <= p.delivery_s,
         PolicyOp::SetTimelock { seconds } => *seconds >= p.timelock_s,
         PolicyOp::SetGroup(new) => p.group(&new.name).is_none_or(|cur| group_tighter(new, cur)),
         PolicyOp::SetPriceFloor(new) => p.floor(&new.asset).is_some_and(|cur| new.min.0 >= cur.0),
@@ -457,6 +463,7 @@ pub fn apply(op: PolicyOp, p: &mut Policy) {
             upsert(&mut p.trust, t, |x| x.asset == asset);
         }
         PolicyOp::RemoveTrust { asset } => p.trust.retain(|x| x.asset != asset),
+        PolicyOp::SetDeliveryWindow { seconds } => p.delivery_s = seconds,
     }
 }
 
@@ -496,6 +503,7 @@ impl Policy {
             refund_limits: Vec::new(),
             council: Vec::new(),
             trust: Vec::new(),
+            delivery_s: 3_600,
         }
     }
 
@@ -633,6 +641,7 @@ impl Policy {
             require!(v.max > 0 && period_ok(v.period_s), "bad velocity");
         }
         require!(self.pending_ttl_s > 0, "pending ttl must be positive");
+        require!(self.delivery_s > 0, "delivery window must be positive");
         let near_side = |a: &Asset| matches!(a, Asset::Near | Asset::Nep141 { .. });
         require!(
             self.floors.len() <= MAX_ASSETS
@@ -755,6 +764,7 @@ pub mod tests {
             refund_limits: vec![],
             council: vec![],
             trust: vec![],
+            delivery_s: 600,
         }
     }
 

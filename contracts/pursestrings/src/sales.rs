@@ -18,8 +18,11 @@ const MAX_PAGE: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OrderStatus {
     Quoted,
+    /// Paid and held: nothing is shared out until the agent delivers.
     Paid,
     Delivered,
+    /// Refunded in full before delivery, by the agent or by the buyer after the deadline.
+    Refunded,
 }
 
 #[near(serializers = [borsh, json])]
@@ -35,8 +38,11 @@ pub struct Order {
     pub expires_at: u64,
     pub payer: Option<AccountId>,
     pub paid_at: Option<u64>,
-    /// The price minus the shares paid out: the only part a refund can come from.
-    pub kept: U128,
+    /// After this the buyer can take an undelivered payment back themselves.
+    pub deliver_by: Option<u64>,
+    /// What a refund can still come from: the whole payment until delivery, then only the
+    /// part the account kept after paying the split.
+    pub held: U128,
     pub refunded: U128,
     pub receipt: Option<String>,
 }
@@ -62,8 +68,8 @@ pub enum QuoteDecision {
 pub enum RefundDenial {
     Frozen,
     NotPaid,
-    /// More than the part of the price the account kept.
-    OverKept {
+    /// More than the order still holds.
+    OverHeld {
         max: U128,
     },
     NoRefundLimit,
@@ -144,7 +150,8 @@ impl Pursestrings {
                         expires_at,
                         payer: None,
                         paid_at: None,
-                        kept: U128(0),
+                        deliver_by: None,
+                        held: U128(0),
                         refunded: U128(0),
                         receipt: None,
                     },
@@ -222,19 +229,60 @@ impl Pursestrings {
         self.settle_sale(order_id, payer, change);
     }
 
-    /// The agent records what it delivered, such as a hash or a link.
+    /// The agent records what it delivered, such as a hash or a link, and only then is the
+    /// payment split.
     pub fn deliver(&mut self, order_id: u64, receipt: String) {
         self.assert_agent();
         require!(receipt.len() <= MAX_PURPOSE_BYTES, "receipt too long");
+        let (shares, kept) = {
+            let order = self.orders.get(&order_id).expect("unknown order");
+            require!(order.status == OrderStatus::Paid, "not paid");
+            split(&self.policy, order.held.0)
+        };
         let order = self.orders.get_mut(&order_id).expect("unknown order");
-        require!(order.status == OrderStatus::Paid, "not paid");
         order.status = OrderStatus::Delivered;
         order.receipt = Some(receipt.clone());
-        Event::Delivered { order_id, receipt }.emit();
+        order.held = U128(kept);
+        let asset = order.asset.clone();
+        Event::Delivered {
+            order_id,
+            receipt,
+            kept: U128(kept),
+        }
+        .emit();
+        for (account, amount) in shares {
+            if amount > 0 {
+                self.pay_share(Some(order_id), account, asset.clone(), amount.into());
+            }
+        }
     }
 
-    /// Refunds go only to whoever paid, only from the part of the price the account kept, and
-    /// only within the owner's refund window for the asset.
+    /// If the agent hasn't delivered by the deadline, the buyer takes the payment back
+    /// themselves. Works while frozen, and doesn't count against the agent's refund window.
+    pub fn reclaim(&mut self, order_id: u64) {
+        let order = self.orders.get(&order_id).expect("unknown order").clone();
+        require!(
+            order.status == OrderStatus::Paid,
+            "not paid or already delivered"
+        );
+        require!(
+            order.payer.as_ref() == Some(&env::predecessor_account_id()),
+            "only the buyer"
+        );
+        require!(
+            order.deliver_by.is_some_and(|t| now_s() >= t),
+            "the agent still has time to deliver"
+        );
+        self.pay_refund(order_id, &order, order.held, None);
+        Event::Reclaimed {
+            order_id,
+            amount: order.held,
+        }
+        .emit();
+    }
+
+    /// Refunds go only to whoever paid, only from what the order still holds, and only within
+    /// the owner's refund window for the asset.
     pub fn refund(&mut self, order_id: u64, amount: U128, reason: String) -> RefundDecision {
         self.assert_agent();
         require!(amount.0 > 0, "amount must be positive");
@@ -257,21 +305,7 @@ impl Pursestrings {
                 let mut ring = self.usage.get(&key).cloned().unwrap_or_default();
                 let bucket = ring.add(w.period_s, now, amount.0);
                 self.usage.insert(key, ring);
-                let o = self.orders.get_mut(&order_id).expect("unknown order");
-                o.refunded = U128(o.refunded.0 + amount.0);
-                let payer = order.payer.clone().expect("paid");
-                self.transfer(
-                    &order.asset,
-                    &payer,
-                    amount,
-                    format!("pursestrings:refund:{order_id}"),
-                )
-                .then(
-                    Self::ext(env::current_account_id())
-                        .with_static_gas(PAYOUT_CALLBACK_GAS)
-                        .on_refunded(order_id, amount, bucket),
-                )
-                .detach();
+                self.pay_refund(order_id, &order, amount, Some(bucket));
                 RefundDecision::Refunded
             }
         };
@@ -332,15 +366,27 @@ impl Pursestrings {
         .emit();
     }
 
+    /// A failed refund puts the money back on the order, and back in the window if the agent
+    /// gave it.
     #[private]
-    pub fn on_refunded(&mut self, order_id: u64, amount: U128, bucket: u64) {
+    pub fn on_refunded(
+        &mut self,
+        order_id: u64,
+        amount: U128,
+        bucket: Option<u64>,
+        status: OrderStatus,
+    ) {
         if is_promise_success() {
             return;
         }
         let o = self.orders.get_mut(&order_id).expect("unknown order");
         o.refunded = U128(o.refunded.0 - amount.0);
+        o.held = U128(o.held.0 + amount.0);
+        o.status = status;
         let asset = o.asset.clone();
-        if let Some(w) = self.policy.refund_limit(&asset) {
+        if let Some(bucket) = bucket
+            && let Some(w) = self.policy.refund_limit(&asset)
+        {
             let key = UsageKey::Refund {
                 asset,
                 period_s: w.period_s,
@@ -417,12 +463,11 @@ impl Pursestrings {
         if self.policy.frozen {
             return Some(RefundDenial::Frozen);
         }
-        if order.status == OrderStatus::Quoted {
+        if !matches!(order.status, OrderStatus::Paid | OrderStatus::Delivered) {
             return Some(RefundDenial::NotPaid);
         }
-        let max = order.kept.0 - order.refunded.0;
-        if amount > max {
-            return Some(RefundDenial::OverKept { max: U128(max) });
+        if amount > order.held.0 {
+            return Some(RefundDenial::OverHeld { max: order.held });
         }
         let Some(w) = self.policy.refund_limit(&order.asset) else {
             return Some(RefundDenial::NoRefundLimit);
@@ -444,34 +489,53 @@ impl Pursestrings {
         None
     }
 
-    /// Marks the quote paid and pays every share. `change` is what goes back to the payer.
+    /// Marks the quote paid and holds the payment until delivery. `change` went back to the
+    /// payer.
     fn settle_sale(&mut self, order_id: u64, payer: AccountId, change: u128) {
         let now = now_s();
-        let (asset, price) = {
-            let o = self.orders.get(&order_id).expect("unknown order");
-            (o.asset.clone(), o.price.0)
-        };
-        let (shares, kept) = split(&self.policy, price);
+        let deliver_by = now + u64::from(self.policy.delivery_s);
         let o = self.orders.get_mut(&order_id).expect("unknown order");
         o.status = OrderStatus::Paid;
         o.payer = Some(payer.clone());
         o.paid_at = Some(now);
-        o.kept = U128(kept);
+        o.deliver_by = Some(deliver_by);
+        o.held = o.price;
+        let (asset, price) = (o.asset.clone(), o.price);
         self.open_quotes -= 1;
         Event::Sale {
             order_id,
             payer,
-            asset: asset.clone(),
-            price: U128(price),
+            asset,
+            price,
             change: U128(change),
-            kept: U128(kept),
+            deliver_by,
         }
         .emit();
-        for (account, amount) in shares {
-            if amount > 0 {
-                self.pay_share(Some(order_id), account, asset.clone(), amount.into());
-            }
+    }
+
+    /// Sends `amount` of what the order holds back to its payer. Emptying an undelivered
+    /// order marks it refunded.
+    fn pay_refund(&mut self, order_id: u64, order: &Order, amount: U128, bucket: Option<u64>) {
+        let o = self.orders.get_mut(&order_id).expect("unknown order");
+        let status = o.status;
+        o.held = U128(o.held.0 - amount.0);
+        o.refunded = U128(o.refunded.0 + amount.0);
+        if o.status == OrderStatus::Paid && o.held.0 == 0 {
+            o.status = OrderStatus::Refunded;
         }
+        let payer = order.payer.clone().expect("paid");
+        self.transfer(
+            &order.asset,
+            &payer,
+            amount,
+            format!("pursestrings:refund:{order_id}"),
+        )
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(PAYOUT_CALLBACK_GAS)
+                .on_refunded(order_id, amount, bucket, status),
+        )
+        .detach();
     }
 
     fn pay_share(&self, order_id: Option<u64>, account: AccountId, asset: Asset, amount: U128) {
@@ -589,16 +653,53 @@ mod tests {
     }
 
     #[test]
-    fn a_sale_pays_the_split_and_keeps_the_rest() {
+    fn a_payment_is_held_until_delivery_then_split() {
         let mut c = shop();
         quote(&mut c, 2_500_000);
         assert_eq!(pay(&mut c, 2_600_000, "0", 1_010), 100_000, "change back");
         let o = c.order(0).unwrap();
         assert_eq!(o.status, OrderStatus::Paid);
         assert_eq!(o.payer, Some(buyer()));
-        assert_eq!(o.kept, U128(250_000), "10% kept after 70% + 20%");
+        assert_eq!(o.held, U128(2_500_000), "nothing shared before delivery");
+        assert_eq!(o.deliver_by, Some(1_010 + 600));
         assert_eq!(c.open_quotes, 0);
         assert_eq!(pay(&mut c, 2_500_000, "0", 1_020), 2_500_000, "paid twice");
+        as_agent(1_030);
+        c.deliver(0, "sha256:abc".into());
+        let o = c.order(0).unwrap();
+        assert_eq!(o.status, OrderStatus::Delivered);
+        assert_eq!(o.held, U128(250_000), "10% kept after 70% + 20%");
+    }
+
+    #[test]
+    fn the_buyer_takes_an_undelivered_payment_back() {
+        let mut c = shop();
+        quote(&mut c, 2_000_000);
+        pay(&mut c, 2_000_000, "0", 1_010);
+        let reclaim = |c: &mut Pursestrings, who: &str, now_s: u64| {
+            testing_env!(
+                VMContextBuilder::new()
+                    .current_account_id("purse.near".parse().unwrap())
+                    .predecessor_account_id(who.parse().unwrap())
+                    .block_timestamp(now_s * 1_000_000_000)
+                    .build()
+            );
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.reclaim(0))).is_ok()
+        };
+        assert!(
+            !reclaim(&mut c, "buyer.near", 1_100),
+            "the agent still has time"
+        );
+        assert!(!reclaim(&mut c, "other.near", 1_700), "only the buyer");
+        c.policy.frozen = true;
+        assert!(reclaim(&mut c, "buyer.near", 1_700), "works while frozen");
+        let o = c.order(0).unwrap();
+        assert_eq!(o.status, OrderStatus::Refunded);
+        assert_eq!((o.held, o.refunded), (U128(0), U128(2_000_000)));
+        as_agent(1_800);
+        let r =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.deliver(0, "late".into())));
+        assert!(r.is_err(), "nothing left to deliver against");
     }
 
     #[test]
@@ -631,32 +732,42 @@ mod tests {
     }
 
     #[test]
-    fn refunds_come_only_from_the_kept_share_within_the_window() {
+    fn refunds_go_to_the_payer_from_what_is_held_within_the_window() {
         let mut c = shop();
+        c.policy.refund_limits[0].window.limit = U128(2_100_000);
         quote(&mut c, 2_000_000);
         pay(&mut c, 2_000_000, "0", 1_010);
         as_agent(1_020);
         assert_eq!(
-            c.refund(0, U128(200_001), "unhappy".into()),
-            RefundDecision::Denied {
-                reason: RefundDenial::OverKept { max: U128(200_000) }
-            }
+            c.refund(0, U128(2_000_000), "can't do it".into()),
+            RefundDecision::Refunded,
+            "in full before delivery"
         );
-        assert_eq!(
-            c.refund(0, U128(200_000), "unhappy".into()),
-            RefundDecision::Refunded
-        );
+        assert_eq!(c.order(0).unwrap().status, OrderStatus::Refunded);
         quote(&mut c, 2_000_000);
         pay(&mut c, 2_000_000, "1", 1_030);
         as_agent(1_040);
+        c.deliver(1, "sha256:def".into());
         assert_eq!(
-            c.refund(1, U128(200_000), "again".into()),
+            c.refund(1, U128(200_001), "unhappy".into()),
+            RefundDecision::Denied {
+                reason: RefundDenial::OverHeld { max: U128(200_000) }
+            },
+            "after delivery only the kept 10%"
+        );
+        assert_eq!(
+            c.refund(1, U128(200_000), "unhappy".into()),
             RefundDecision::Denied {
                 reason: RefundDenial::OverWindow {
                     period_s: 86_400,
                     remaining: U128(100_000)
                 }
-            }
+            },
+            "the full refund used most of the window"
+        );
+        assert_eq!(
+            c.refund(1, U128(100_000), "unhappy".into()),
+            RefundDecision::Refunded
         );
         c.policy.refund_limits.clear();
         assert_eq!(

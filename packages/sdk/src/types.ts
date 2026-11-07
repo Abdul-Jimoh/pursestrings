@@ -128,12 +128,12 @@ export type RefundDenial =
   | "Frozen"
   | "NotPaid"
   | "NoRefundLimit"
-  | { OverKept: { max: U128 } }
+  | { OverHeld: { max: U128 } }
   | { OverWindow: { period_s: number; remaining: U128 } };
 
 export type RefundDecision = "Refunded" | { Denied: { reason: RefundDenial } };
 
-export type OrderStatus = "Quoted" | "Paid" | "Delivered";
+export type OrderStatus = "Quoted" | "Paid" | "Delivered" | "Refunded";
 
 export interface Order {
   buyer: string | null;
@@ -145,7 +145,10 @@ export interface Order {
   expires_at: number;
   payer: string | null;
   paid_at: number | null;
-  kept: U128;
+  /** After this the buyer can take an undelivered payment back. */
+  deliver_by: number | null;
+  /** The whole payment until delivery, then the part the account kept. */
+  held: U128;
   refunded: U128;
   receipt: string | null;
 }

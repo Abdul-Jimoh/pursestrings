@@ -1,5 +1,5 @@
-//! The agent's shop: price floor, revenue split, refunds and freeze, against a real NEP-141
-//! token and NEAR payments.
+//! The agent's shop: price floor, held payments split on delivery, refunds, the buyer's
+//! reclaim and freeze, against a real NEP-141 token and NEAR payments.
 
 mod common;
 
@@ -23,6 +23,7 @@ fn shop_policy(owner: &str) -> impl FnOnce(&AccountId) -> Value {
             { "account": owner, "bps": 7000 },
             { "account": shop, "bps": 2000 }
         ]);
+        p["delivery_s"] = json!(48);
         p["refund_limits"] = json!([{
             "asset": { "Nep141": { "token": USDC } },
             "window": { "period_s": 86_400, "limit": "300000" }
@@ -102,7 +103,7 @@ async fn quote(env: &Env, price: &str) -> TestResult<Value> {
 }
 
 #[tokio::test]
-async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResult {
+async fn a_sale_respects_the_floor_and_is_split_on_delivery() -> TestResult {
     let (env, token) = token_env().await?;
 
     let haggled = quote(&env, "1999999").await?;
@@ -115,9 +116,12 @@ async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResul
     assert_eq!(q["Quoted"]["order_id"], 0);
     buy(&env, &token, 2_600_000, "0").await?;
 
-    assert_eq!(ft_balance(&env, &token, &env.owner).await?, 1_750_000);
-    assert_eq!(ft_balance(&env, &token, &env.shop).await?, 500_000);
-    assert_eq!(ft_balance(&env, &token, &env.purse).await?, 250_000);
+    assert_eq!(
+        ft_balance(&env, &token, &env.owner).await?,
+        0,
+        "held until delivery"
+    );
+    assert_eq!(ft_balance(&env, &token, &env.purse).await?, 2_500_000);
     assert_eq!(
         ft_balance(&env, &token, &env.attacker).await?,
         7_500_000,
@@ -125,7 +129,7 @@ async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResul
     );
     let order: Value = env.view("order", json!({ "order_id": 0 })).await?;
     assert_eq!(order["status"], "Paid");
-    assert_eq!(order["kept"], "250000");
+    assert_eq!(order["held"], "2500000");
 
     buy(&env, &token, 2_500_000, "0").await?;
     assert_eq!(
@@ -141,6 +145,10 @@ async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResul
     )
     .await?
     .assert_success();
+    env.sandbox.fast_forward(3).await?;
+    assert_eq!(ft_balance(&env, &token, &env.owner).await?, 1_750_000);
+    assert_eq!(ft_balance(&env, &token, &env.shop).await?, 500_000);
+    assert_eq!(ft_balance(&env, &token, &env.purse).await?, 250_000);
     let over: Value = env
         .agent_call(
             "refund",
@@ -152,7 +160,7 @@ async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResul
         .json()?;
     assert_eq!(
         over,
-        json!({ "Denied": { "reason": { "OverKept": { "max": "250000" } } } })
+        json!({ "Denied": { "reason": { "OverHeld": { "max": "250000" } } } })
     );
     let ok: Value = env
         .agent_call(
@@ -167,6 +175,37 @@ async fn a_sale_respects_the_floor_and_pays_the_split_as_it_lands() -> TestResul
     env.sandbox.fast_forward(3).await?;
     assert_eq!(ft_balance(&env, &token, &env.attacker).await?, 7_750_000);
     assert_eq!(ft_balance(&env, &token, &env.purse).await?, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen() -> TestResult {
+    let (env, token) = token_env().await?;
+    quote(&env, "2000000").await?;
+    buy(&env, &token, 2_000_000, "0").await?;
+    assert!(
+        refused(
+            env.call_as(&env.attacker, "reclaim", json!({ "order_id": 0 }), 0)
+                .await
+        ),
+        "the agent still has time"
+    );
+    env.owner_call("freeze", json!({})).await?.assert_success();
+    env.advance(50).await?;
+    assert!(
+        refused(
+            env.call_as(&env.shop, "reclaim", json!({ "order_id": 0 }), 0)
+                .await
+        ),
+        "only the buyer"
+    );
+    env.call_as(&env.attacker, "reclaim", json!({ "order_id": 0 }), 0)
+        .await?
+        .assert_success();
+    env.sandbox.fast_forward(3).await?;
+    assert_eq!(ft_balance(&env, &token, &env.attacker).await?, 10_000_000);
+    let order: Value = env.view("order", json!({ "order_id": 0 })).await?;
+    assert_eq!(order["status"], "Refunded");
     Ok(())
 }
 
@@ -213,6 +252,13 @@ async fn near_payments_split_exactly_and_redirecting_revenue_waits() -> TestResu
     env.call_as(&env.attacker, "pay", json!({ "order_id": 0 }), NEAR)
         .await?
         .assert_success();
+    env.agent_call(
+        "deliver",
+        json!({ "order_id": 0, "receipt": "logo.svg" }),
+        0,
+    )
+    .await?
+    .assert_success();
     env.sandbox.fast_forward(3).await?;
     assert_eq!(env.balance(&env.shop).await? - shop0, NEAR / 10 * 2);
     assert_eq!(env.balance(&env.owner).await? - owner0, NEAR / 10 * 7);

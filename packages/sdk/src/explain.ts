@@ -75,6 +75,6 @@ export function describeRefund(d: RefundDecision, fmt: FormatAmount = (a) => a):
   if (r === "Frozen") return "refused: the owner has frozen this account.";
   if (r === "NotPaid") return "refused: the order isn't paid.";
   if (r === "NoRefundLimit") return "refused: the owner allows no refunds in this token.";
-  if ("OverKept" in r) return `refused: at most ${fmt(r.OverKept.max)} can be refunded on it.`;
+  if ("OverHeld" in r) return `refused: at most ${fmt(r.OverHeld.max)} can be refunded on it.`;
   return `refused: over the refund budget per ${duration(r.OverWindow.period_s)}; ${fmt(r.OverWindow.remaining)} left.`;
 }

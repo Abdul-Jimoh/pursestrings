@@ -31,6 +31,10 @@ const TIGHT_REMOVALS = [
   "RemoveIntentKind",
   "RemoveMinRate",
   "RemoveEvmGas",
+  "RemovePriceFloor",
+  "RemoveRefundLimit",
+  "RemoveCouncil",
+  "RemoveTrust",
 ];
 
 const le = (a: string, b: string) => BigInt(a) <= BigInt(b);
@@ -68,6 +72,16 @@ export function tightens(op: Op, p: Policy): boolean {
   if ("SetTimelock" in op) return (op.SetTimelock as { seconds: number }).seconds >= p.timelock_s;
   if ("SetPendingTtl" in op)
     return (op.SetPendingTtl as { seconds: number }).seconds <= p.pending_ttl_s;
+  if ("SetPriceFloor" in op) {
+    const n = op.SetPriceFloor as { asset: Asset; min: string };
+    const c = p.floors?.find((f) => sameAsset(f.asset, n.asset));
+    return !!c && le(c.min, n.min);
+  }
+  if ("SetSplit" in op)
+    return JSON.stringify((op.SetSplit as { shares: unknown }).shares) === JSON.stringify(p.split);
+  if ("SetDeliveryWindow" in op)
+    return (op.SetDeliveryWindow as { seconds: number }).seconds <= (p.delivery_s ?? 0);
+  // Trust tiers and refund windows are compared tier by tier on-chain; the preview says "waits".
   return TIGHT_REMOVALS.includes(Object.keys(op)[0] ?? "");
 }
 

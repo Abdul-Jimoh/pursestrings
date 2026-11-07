@@ -49,6 +49,25 @@ describe("tightens, as the contract's classify", () => {
     expect(tightens("Unfreeze", policy)).toBe(false);
     expect(tightens({ RemoveGroup: { name: "usd" } }, policy)).toBe(false);
   });
+
+  it("shop and board rules", () => {
+    const p = {
+      ...policy,
+      floors: [{ asset: "Near" as const, min: "50" }],
+      split: [{ account: "dao.testnet", bps: 2_000 }],
+      delivery_s: 600,
+    };
+    expect(tightens({ SetPriceFloor: { asset: "Near", min: "60" } }, p)).toBe(true);
+    expect(tightens({ SetPriceFloor: { asset: "Near", min: "40" } }, p)).toBe(false);
+    expect(tightens({ SetSplit: { shares: p.split } }, p)).toBe(true);
+    expect(tightens({ SetSplit: { shares: [{ account: "me.testnet", bps: 2_000 }] } }, p)).toBe(
+      false,
+    );
+    expect(tightens({ SetDeliveryWindow: { seconds: 300 } }, p)).toBe(true);
+    expect(tightens({ SetDeliveryWindow: { seconds: 900 } }, p)).toBe(false);
+    expect(tightens({ RemoveCouncil: { account: "c.testnet" } }, p)).toBe(true);
+    expect(tightens({ AddCouncil: { account: "c.testnet" } }, p)).toBe(false);
+  });
 });
 
 describe("plain English", () => {

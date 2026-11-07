@@ -181,6 +181,9 @@ pub fn policy_ops(policy: &Value) -> Value {
     ops.push(json!({ "SetFeeBudget": policy["fee_budget"] }));
     ops.push(json!({ "SetPendingTtl": { "seconds": policy["pending_ttl_s"] } }));
     ops.push(json!({ "SetTimelock": { "seconds": policy["timelock_s"] } }));
+    if let Some(seconds) = policy.get("delivery_s") {
+        ops.push(json!({ "SetDeliveryWindow": { "seconds": seconds } }));
+    }
     Value::Array(ops)
 }
 

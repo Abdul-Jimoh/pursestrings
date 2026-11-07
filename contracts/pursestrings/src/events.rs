@@ -72,7 +72,7 @@ pub enum Event {
         asset: Asset,
         price: U128,
         change: U128,
-        kept: U128,
+        deliver_by: u64,
     },
     #[event_version("1.0.0")]
     PaymentRefused {
@@ -89,7 +89,13 @@ pub enum Event {
         ok: bool,
     },
     #[event_version("1.0.0")]
-    Delivered { order_id: u64, receipt: String },
+    Delivered {
+        order_id: u64,
+        receipt: String,
+        kept: U128,
+    },
+    #[event_version("1.0.0")]
+    Reclaimed { order_id: u64, amount: U128 },
     #[event_version("1.0.0")]
     Refund {
         order_id: u64,

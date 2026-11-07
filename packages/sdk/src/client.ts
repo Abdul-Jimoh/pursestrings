@@ -212,6 +212,10 @@ export class Caller {
       { contractId: token, deposit: ONE_YOCTO, tgas: 200n },
     );
   }
+  /** The buyer takes back a payment the agent didn't deliver against in time. */
+  reclaim(orderId: number) {
+    return this.call<void>("reclaim", { order_id: orderId }, { tgas: 60n });
+  }
   claimBounty(id: number) {
     return this.call<void>("claim_bounty", { id }, { deposit: ONE_YOCTO, tgas: 30n });
   }

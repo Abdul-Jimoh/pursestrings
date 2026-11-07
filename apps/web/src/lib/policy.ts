@@ -46,6 +46,9 @@ export interface Policy {
   velocity: Velocity | null;
   pending_ttl_s: number;
   timelock_s: number;
+  floors?: { asset: Asset; min: string }[];
+  split?: { account: string; bps: number }[];
+  delivery_s?: number;
 }
 
 let provider: JsonRpcProvider | undefined;
