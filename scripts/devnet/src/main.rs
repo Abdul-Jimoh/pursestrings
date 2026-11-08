@@ -149,7 +149,11 @@ fn board_ops(council: &[&AccountId]) -> Value {
         "cosign_above": null,
         "risk_check_above": null
     }})];
-    ops.extend(council.iter().map(|a| json!({ "AddCouncil": { "account": a } })));
+    ops.extend(
+        council
+            .iter()
+            .map(|a| json!({ "AddCouncil": { "account": a } })),
+    );
     ops.extend([
         json!({ "SetTrust": { "asset": "Near", "tiers": [
             { "points": 0, "auto_up_to": "0", "council_up_to": milli(300) },

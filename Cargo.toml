@@ -29,3 +29,8 @@ lto = true
 debug = false
 panic = "abort"
 overflow-checks = true
+
+# Dependencies, including the unit tests' mocked chain, build optimised: 10,000 property-test
+# cases take under a minute instead of four. The contract's own code stays a debug build.
+[profile.dev.package."*"]
+opt-level = 2

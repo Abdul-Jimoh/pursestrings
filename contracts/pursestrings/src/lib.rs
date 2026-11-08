@@ -4,6 +4,8 @@ mod events;
 mod evm;
 mod intents;
 pub mod policy;
+#[cfg(test)]
+mod props;
 mod ring;
 pub mod sales;
 mod spend;
