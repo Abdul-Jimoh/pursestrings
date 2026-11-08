@@ -171,7 +171,8 @@ impl Pursestrings {
     /// Applies a queued `Migrate` once its timelock has passed. `code` must hash to the queued
     /// code hash, and the factory must confirm it published that hash before anything deploys.
     /// Anyone can deliver the code: the owner's say is the proposal, and a DAO owner would
-    /// otherwise have to store the whole wasm in one of its own proposals.
+    /// otherwise have to store the whole wasm in one of its own proposals. A freeze holds it,
+    /// so a council member can stop a queued code change the owner can't cancel in time.
     /// Takes borsh arguments `(u64, Vec<u8>)` because the code is a few hundred KB.
     #[payable]
     pub fn apply_migration(
@@ -180,6 +181,7 @@ impl Pursestrings {
         #[serializer(borsh)] code: Vec<u8>,
     ) -> Promise {
         assert_one_yocto();
+        require!(!self.policy.frozen, "frozen");
         let proposal = self.proposals.get(&id).expect("unknown proposal");
         require!(now_s() >= proposal.eta, "timelocked");
         let [PolicyOp::Migrate { code_hash }] = proposal.ops[..] else {

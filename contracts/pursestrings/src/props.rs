@@ -52,7 +52,8 @@ fn step() -> impl Strategy<Value = (u64, Step)> {
         1 => any::<usize>().prop_map(Step::Reject),
         1 => any::<usize>().prop_map(Step::Fail),
     ];
-    (0u64..400, s)
+    // Short gaps land near the cooldown (up to 120 s) often enough to hit its edge every run.
+    (prop_oneof![2 => 0u64..130, 1 => 0u64..400], s)
 }
 
 fn policy() -> impl Strategy<Value = Policy> {

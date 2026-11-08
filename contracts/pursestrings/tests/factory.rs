@@ -344,6 +344,25 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
     );
     assert_eq!(s.code_of(&alice).await?, ContractState::LocalHash(s.hash));
 
+    call("freeze", json!({})).await?.assert_success();
+    assert!(
+        refused(Ok(apply_migration_as(
+            s.creator.clone(),
+            id,
+            s.code.clone()
+        )
+        .await?)),
+        "a freeze holds a due migration"
+    );
+    let unfreeze: Option<u64> = call("propose", json!({ "ops": ["Unfreeze"] }))
+        .await?
+        .assert_success()
+        .json()?;
+    s.advance(61).await?;
+    call("apply_proposal", json!({ "id": unfreeze.expect("queued") }))
+        .await?
+        .assert_success();
+
     let res = apply_migration_as(s.creator.clone(), id, s.code.clone())
         .await?
         .assert_success();

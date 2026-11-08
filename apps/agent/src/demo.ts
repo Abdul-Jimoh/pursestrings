@@ -110,7 +110,10 @@ const onlyAgent =
   purseKeys.length === 1 &&
   purseKeys[0]?.access_key.permission !== "FullAccess" &&
   JSON.stringify(purseKeys[0]?.access_key.permission).includes("request_spend");
-see(onlyAgent, `${A.purse} has one key: the agent's, limited to request_spend and cancel_request`);
+see(
+  onlyAgent,
+  `${A.purse} has one key: the agent's, limited to request_spend, cancel_request, quote, deliver and refund`,
+);
 
 section("2. The policy: $150 a day of USDC, wherever it's spent");
 const policy = (await purse.policy()) as {
@@ -360,23 +363,26 @@ const reports = new Reports(join(scratch, "reports.jsonl"));
 const board = new Pursestrings(d.rpc, A.bounties);
 const sell = async (target: string, offers: bigint[]) => {
   let order: number | undefined;
+  let refused = 0;
   for (const price of offers) {
     console.log(`   buyer: "I'll pay ${nearAmt(price)} for a check of ${target}"`);
     const q = await seller.quote(A.buyer, "Near", price, `check:${target}`);
     console.log(`   contract: ${q.value ? describeQuote(q.value, nearAmt) : q.error}`);
+    const why = q.value && "Denied" in q.value ? q.value.Denied.reason : undefined;
+    if (typeof why === "object" && "BelowFloor" in why) refused++;
     if (q.value && "Quoted" in q.value) {
       order = q.value.Quoted.order_id;
       break;
     }
   }
   if (order === undefined) throw new Error("no quote");
-  return order;
+  return { order, refused };
 };
 
 const lookalike = "communlty.sandbox";
-const order = await sell(lookalike, [milli(10), milli(80)]);
+const { order, refused } = await sell(lookalike, [milli(10), milli(80)]);
 see(
-  (await shopPurse.recentOrders(5)).length === 1,
+  refused === 1 && (await shopPurse.recentOrders(5)).length === 1,
   "the agent went along with 0.01 NEAR, but the contract won't quote under the owner's floor; 0.08 it will",
 );
 const short = await buyer.payNear(order, milli(50));
@@ -453,11 +459,16 @@ async function daoVotes(description: string, method: string, args: object) {
     { proposal: { description, kind } },
     { contractId: A.dao, deposit: WNEAR },
   );
-  return council.call(
-    "act_proposal",
-    { id: added.value, action: "VoteApprove", proposal: kind },
-    { contractId: A.dao },
-  );
+  let last: Awaited<ReturnType<typeof council.call>> | undefined;
+  for (const member of [council, steward]) {
+    last = await member.call(
+      "act_proposal",
+      { id: added.value, action: "VoteApprove", proposal: kind },
+      { contractId: A.dao },
+    );
+    console.log(`   ${member.signer.accountId} votes yes on DAO proposal ${added.value}`);
+  }
+  return last;
 }
 async function bountyPaid(id: number) {
   for (let i = 0; i < 20 && (await board.bounty(id))?.status !== "Paid"; i++)
@@ -548,7 +559,7 @@ const vote =
         req_id: b.decision.NeedsCosign.req_id,
       })
     : undefined;
-see(!!vote?.ok && (await bountyPaid(b.id)), "the DAO votes the payout through and it pays");
+see(!!vote?.ok && (await bountyPaid(b.id)), "both DAO members vote the payout through and it pays");
 
 const list = scamListFrom(await board.recentBounties(100));
 const second = await gather(scam, { ...sources, scamList: async () => list });

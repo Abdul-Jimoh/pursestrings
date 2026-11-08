@@ -387,7 +387,7 @@ async fn main() -> Result {
         )?,
         Some(json!({
             "config": { "name": "community", "purpose": "grows the scam list", "metadata": "" },
-            "policy": [council]
+            "policy": [council, steward]
         })),
     )
     .await?;
@@ -423,14 +423,16 @@ async fn main() -> Result {
             NearToken::from_near(1),
         )
         .await?;
-    n.call(
-        &council,
-        &dao,
-        "act_proposal",
-        json!({ "id": id, "action": "VoteApprove", "proposal": kind }),
-        zero,
-    )
-    .await?;
+    for member in [&council, &steward] {
+        n.call(
+            member,
+            &dao,
+            "act_proposal",
+            json!({ "id": id, "action": "VoteApprove", "proposal": kind }),
+            zero,
+        )
+        .await?;
+    }
 
     let derived_evm: String = Contract(mpc.clone())
         .call_function(

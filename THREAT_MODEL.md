@@ -17,7 +17,7 @@ version, deploy the real contracts and drive them through signed transactions.
 | Council member | Their own NEAR account | Approve bounty payouts their tier allows, post bounties, freeze | Approve payouts above the council tier, unfreeze, change the policy |
 | Buyer or contributor | A NEAR account | Pay a quote (a wrong payment comes back in full); claim and submit a bounty | Get paid for a bounty they didn't claim, or more than its reward |
 | Relayer | Nothing | Broadcast signed EVM transactions and intents the contract already approved | Change what was signed; mark a payment done (only an MPC proof can) |
-| Anyone | A NEAR account | Call `confirm_evm`, `release_evm`, `settle_intent`, `expire_request`, `prune_requests` | Make any of those succeed without the on-chain evidence each one checks |
+| Anyone | A NEAR account | Call `confirm_evm`, `release_evm`, `settle_intent`, `expire_request`, `prune_requests`; deliver the code for a migration the owner proposed, once it's due | Make any of those succeed without the on-chain evidence each one checks; deploy code the owner didn't propose, before the timelock ends, or while frozen |
 
 ## Invariants
 
@@ -113,8 +113,10 @@ its code through `Migrate`: the owner proposes a code hash, it waits out the tim
 loosening, and `apply_migration`
 ([admin.rs:177](contracts/pursestrings/src/admin.rs#L177)) checks with the factory that the hash
 was published before deploying it. Once the proposal is due, anyone can deliver code matching the
-hash, so a DAO owner never has to store the wasm in a proposal of its own. The factory's own keys are deleted after init, and its admin
-can only append hashes.
+hash, so a DAO owner never has to store the wasm in a proposal of its own. That makes a due
+migration final unless the owner cancels it before the timelock ends, or the account is frozen:
+`apply_migration` refuses while frozen, and any council member can freeze. The factory's own keys
+are deleted after init, and its admin can only append hashes.
 
 Tests:
 - [`inv7_factory_accounts_have_no_keys_and_published_code`](contracts/pursestrings/tests/factory.rs#L181)
@@ -126,8 +128,8 @@ Tests:
   limits. The policy bounds the damage; it doesn't judge intent.
 - **A stolen owner key.** The thief can't loosen anything quickly, but they can approve pending
   co-signs and withdraw the account's NEAR and NEP-141 balances to the owner account, which they
-  then control. Use a wallet you'd trust with the same funds directly, or a DAO as owner (not
-  built yet).
+  then control. Use a wallet you'd trust with the same funds directly, or a DAO as owner
+  (the bounty board is owned by a Sputnik DAO: [board.rs](contracts/pursestrings/tests/board.rs)).
 - **The MPC network.** EVM and intent signatures, and `confirm_evm` / `release_evm` proofs, trust
   NEAR's Chain Signatures network.
 - **Reverted EVM transactions and chains the MPC can't verify.** These fall back to the owner's
