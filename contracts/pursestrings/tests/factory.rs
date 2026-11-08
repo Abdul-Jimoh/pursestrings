@@ -294,8 +294,8 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
         let (s, alice, owner) = (&s, alice.clone(), owner.clone());
         async move { s.call_on(&alice, &owner, method, args, 1).await }
     };
-    let apply_migration = |id: u64, code: Vec<u8>| {
-        let (s, alice, owner) = (&s, alice.clone(), owner.clone());
+    let apply_migration_as = |signer: AccountId, id: u64, code: Vec<u8>| {
+        let (s, alice) = (&s, alice.clone());
         async move {
             let args = near_sdk::borsh::to_vec(&(id, code))?;
             Ok::<_, Box<dyn std::error::Error>>(
@@ -304,12 +304,13 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
                     .transaction()
                     .deposit(NearToken::from_yoctonear(1))
                     .gas(NearGas::from_tgas(300))
-                    .with_signer(owner, s.root.clone())
+                    .with_signer(signer, s.root.clone())
                     .send_to(&s.net)
                     .await?,
             )
         }
     };
+    let apply_migration = |id: u64, code: Vec<u8>| apply_migration_as(owner.clone(), id, code);
 
     let migrate = json!({ "ops": [{ "Migrate": { "code_hash": s.hash.to_string() } }] });
     let mixed = json!({ "ops": [{ "Migrate": { "code_hash": s.hash.to_string() } }, { "AddChain": { "chain_id": 1 } }] });
@@ -343,7 +344,9 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
     );
     assert_eq!(s.code_of(&alice).await?, ContractState::LocalHash(s.hash));
 
-    let res = apply_migration(id, s.code.clone()).await?.assert_success();
+    let res = apply_migration_as(s.creator.clone(), id, s.code.clone())
+        .await?
+        .assert_success();
     assert!(
         res.receipt_failures().is_empty(),
         "deploy + migrate batch succeeded"

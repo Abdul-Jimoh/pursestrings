@@ -111,8 +111,9 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:174](contracts/pursestrings/src/admin.rs#L174)) checks with the factory that the hash
-was published before deploying it. The factory's own keys are deleted after init, and its admin
+([admin.rs:177](contracts/pursestrings/src/admin.rs#L177)) checks with the factory that the hash
+was published before deploying it. Once the proposal is due, anyone can deliver code matching the
+hash, so a DAO owner never has to store the wasm in a proposal of its own. The factory's own keys are deleted after init, and its admin
 can only append hashes.
 
 Tests:

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts",
     "loop": "node --experimental-strip-types --no-warnings scripts/loop.ts",
-    "board-loop": "node --experimental-strip-types --no-warnings scripts/board-loop.ts"
+    "board-loop": "node --experimental-strip-types --no-warnings scripts/board-loop.ts",
+    "board-upgrade": "node --experimental-strip-types --no-warnings scripts/board-upgrade.ts"
   },
   "dependencies": {
     "@pursestrings/sdk": "workspace:*",

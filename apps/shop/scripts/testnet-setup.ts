@@ -5,127 +5,31 @@
 // posts the first ones.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { actions, KeyPair } from "near-api-js";
 import {
-  Account,
-  actions,
-  getTransactionLastResult,
-  JsonRpcProvider,
-  KeyPair,
-  type KeyPairString,
-} from "near-api-js";
+  ADMIN,
+  BOUNTIES,
+  base58,
+  borshBytes,
+  COUNCIL,
+  CREDS,
+  call,
+  codeHashOf,
+  DAO,
+  daoDo,
+  FACTORY,
+  N,
+  ROOT,
+  rpc,
+  SHOP,
+  signer,
+  TGAS,
+  view,
+} from "./testnet.ts";
 
-const RPC = process.env.NEAR_RPC ?? "https://test.rpc.fastnear.com";
-const ROOT = join(import.meta.dirname, "../../..");
-const CREDS = join(homedir(), ".near-credentials/testnet");
-
-const FACTORY = "factory.ps-spike-1028.testnet";
-const ADMIN = "ps-spike-1028.testnet";
-const COUNCIL = [ADMIN, "ps-funder-1101.testnet"];
-const DAO = "ps-community-1107.testnet";
-const SHOP = `shop.${FACTORY}`;
-const BOUNTIES = `bounties.${FACTORY}`;
 const MPC = "v1.signer-prod.testnet";
 const VERSION = "0.2.0-dev.1";
-
-const TGAS = 10n ** 12n;
-const N = (near: number) => (BigInt(Math.round(near * 1_000)) * 10n ** 21n).toString();
-const provider = new JsonRpcProvider({ url: RPC });
-
-function signer(accountId: string): Account {
-  const file = join(CREDS, `${accountId}.json`);
-  if (!existsSync(file)) throw new Error(`no key for ${accountId} in ${CREDS}`);
-  const key = JSON.parse(readFileSync(file, "utf8")).private_key as KeyPairString;
-  return new Account(accountId, provider, key);
-}
-
-async function rpc<T>(params: Record<string, unknown>): Promise<T | undefined> {
-  const res = await fetch(RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 0,
-      method: "query",
-      params: { finality: "final", ...params },
-    }),
-  });
-  const body = (await res.json()) as { result?: T & { error?: string } };
-  return body.result && !body.result.error ? body.result : undefined;
-}
-
-const codeHashOf = async (id: string) =>
-  (await rpc<{ code_hash: string }>({ request_type: "view_account", account_id: id }))?.code_hash;
-
-async function view<T>(
-  contractId: string,
-  method: string,
-  args: Record<string, unknown> = {},
-): Promise<T> {
-  return (await provider.callFunction({ contractId, method, args })) as T;
-}
-
-async function call(
-  from: Account,
-  receiverId: string,
-  method: string,
-  args: object | Uint8Array,
-  deposit = 0n,
-  tgas = 100n,
-) {
-  const res = await from.signAndSendTransaction({
-    receiverId,
-    actions: [actions.functionCall(method, args, tgas * TGAS, deposit)],
-  });
-  const hash = (res as unknown as { transaction: { hash: string } }).transaction.hash;
-  console.log(`  ${from.accountId} → ${receiverId}.${method}: ${hash}`);
-  return getTransactionLastResult(res as never);
-}
-
-const base58 = (bytes: Uint8Array) => {
-  const A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let n = BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
-  let out = "";
-  while (n > 0n) {
-    out = A[Number(n % 58n)] + out;
-    n /= 58n;
-  }
-  return out;
-};
-
-const borshBytes = (b: Uint8Array) => {
-  const len = Buffer.alloc(4);
-  len.writeUInt32LE(b.length);
-  return Buffer.concat([len, b]);
-};
-
-/** Votes a DAO proposal through with every council member until it's no longer in progress. */
-async function daoDo(description: string, kind: Record<string, unknown>) {
-  const proposer = signer(COUNCIL[1] as string);
-  const id = (await call(
-    proposer,
-    DAO,
-    "add_proposal",
-    { proposal: { description, kind } },
-    10n ** 24n,
-  )) as number;
-  for (const member of COUNCIL) {
-    const p = await view<{ status: string }>(DAO, "get_proposal", { id });
-    if (p.status !== "InProgress") break;
-    await call(
-      signer(member),
-      DAO,
-      "act_proposal",
-      { id, action: "VoteApprove", proposal: kind },
-      0n,
-      300n,
-    );
-  }
-  const p = await view<{ status: string }>(DAO, "get_proposal", { id });
-  console.log(`  proposal ${id} "${description}": ${p.status}`);
-  if (p.status !== "Approved") throw new Error(`proposal ${id} ended ${p.status}`);
-}
 
 async function addAgent(account: string, viaDao: boolean) {
   const file = join(CREDS, `${account}.json`);

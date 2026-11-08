@@ -1,7 +1,8 @@
 use near_sdk::json_types::{Base58CryptoHash, U128};
 use near_sdk::serde::Serialize;
 use near_sdk::{
-    Allowance, Gas, NearToken, Promise, PublicKey, env, is_promise_success, near, require,
+    Allowance, Gas, NearToken, Promise, PublicKey, assert_one_yocto, env, is_promise_success, near,
+    require,
 };
 
 use crate::events::Event;
@@ -169,6 +170,8 @@ impl Pursestrings {
 
     /// Applies a queued `Migrate` once its timelock has passed. `code` must hash to the queued
     /// code hash, and the factory must confirm it published that hash before anything deploys.
+    /// Anyone can deliver the code: the owner's say is the proposal, and a DAO owner would
+    /// otherwise have to store the whole wasm in one of its own proposals.
     /// Takes borsh arguments `(u64, Vec<u8>)` because the code is a few hundred KB.
     #[payable]
     pub fn apply_migration(
@@ -176,7 +179,7 @@ impl Pursestrings {
         #[serializer(borsh)] id: u64,
         #[serializer(borsh)] code: Vec<u8>,
     ) -> Promise {
-        self.assert_owner();
+        assert_one_yocto();
         let proposal = self.proposals.get(&id).expect("unknown proposal");
         require!(now_s() >= proposal.eta, "timelocked");
         let [PolicyOp::Migrate { code_hash }] = proposal.ops[..] else {
