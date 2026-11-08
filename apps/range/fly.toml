@@ -1,5 +1,5 @@
 # Deploy from the repo root: fly deploy . --config apps/range/fly.toml --ha=false
-# Secrets (never in this file): fly secrets set RANGE_AGENT_KEY=... RANGE_MODEL_KEY=...
+# Secrets (never in this file): fly secrets set RANGE_AGENT_KEY=... RANGE_MODEL_KEY=... SHOP_AGENT_KEY=...
 app = "pursestrings-range"
 primary_region = "iad"
 
@@ -13,6 +13,8 @@ primary_region = "iad"
   RANGE_ORIGIN = "https://pursestrings.site,https://www.pursestrings.site"
   RANGE_DAILY_USD = "0.3"
   RANGE_PER_HOUR = "5"
+  SHOP_ACCOUNT = "shop.factory.ps-spike-1028.testnet"
+  BOARD_ACCOUNT = "bounties.factory.ps-spike-1028.testnet"
 
 # The attack log is an append-only file, so it lives on a volume.
 [[mounts]]
