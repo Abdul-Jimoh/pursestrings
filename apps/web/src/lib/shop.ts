@@ -106,7 +106,7 @@ export function quoteLine(d: QuoteDecision): { ok: boolean; text: string } {
   if (r === "NotForSale") return { ok: false, text: "Refused: nothing is for sale in that token" };
   if (r === "TooManyOpenQuotes")
     return { ok: false, text: "Refused: too many unpaid quotes are open" };
-  return { ok: false, text: `Refused: below the owner's floor of ${near(r.BelowFloor.floor)}` };
+  return { ok: false, text: "Refused: below the owner's floor" };
 }
 
 export const levelColor: Record<Level, string> = {

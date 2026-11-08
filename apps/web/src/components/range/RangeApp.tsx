@@ -211,7 +211,7 @@ export function RangeApp() {
                 <span className="h-2 w-2 rounded-full bg-paid" />
                 Signed in as <span className="mono break-all text-paper">{session.account}</span>
               </p>
-              <label htmlFor="prompt" className="eyebrow mt-8 block text-dim-ink">
+              <label htmlFor="prompt" className="label mt-8 block text-dim-ink">
                 Your message to the agent
               </label>
               <textarea
@@ -227,7 +227,7 @@ export function RangeApp() {
                 <span className="mono text-[0.75rem] text-dim-ink">{prompt.length} / 2000</span>
               </div>
 
-              <p className="eyebrow mt-8 text-dim-ink">Or start from an example</p>
+              <p className="label mt-8 text-dim-ink">Or start from an example</p>
               <ul className="mt-3 flex flex-col gap-2">
                 {examples.map((x) => (
                   <li key={x}>
@@ -284,7 +284,7 @@ export function RangeApp() {
           )}
           {last && (
             <div className="mt-12 border border-paper/15 bg-ink p-5 md:p-8">
-              <p className="eyebrow mb-6" style={{ color: verdictColor[verdict(last).kind] }}>
+              <p className="label mb-6" style={{ color: verdictColor[verdict(last).kind] }}>
                 Result · {verdict(last).label}
               </p>
               <Transcript prompt={last.prompt} steps={last.steps} />
@@ -306,7 +306,7 @@ export function RangeApp() {
             )}
             <dl className="grid gap-6 sm:grid-cols-2">
               <div className="min-w-0">
-                <dt className="eyebrow text-dim-ink">NEAR account</dt>
+                <dt className="label text-dim-ink">NEAR account</dt>
                 <dd className="mt-2">
                   <a
                     className="mono break-all text-[0.95rem] underline decoration-paper/30 underline-offset-4 hover:decoration-string"
@@ -320,7 +320,7 @@ export function RangeApp() {
                 </dd>
               </div>
               <div className="min-w-0">
-                <dt className="eyebrow text-dim-ink">Its address on Base Sepolia</dt>
+                <dt className="label text-dim-ink">Its address on Base Sepolia</dt>
                 <dd className="mt-2">
                   <a
                     className="mono break-all text-[0.95rem] underline decoration-paper/30 underline-offset-4 hover:decoration-string"
@@ -336,9 +336,9 @@ export function RangeApp() {
             </dl>
 
             <div>
-              <h3 className="eyebrow text-dim-ink">Spending limits</h3>
+              <h3 className="label text-dim-ink">Spending limits</h3>
               <div className="mt-4 border-t border-paper/15">
-                <div className="eyebrow hidden grid-cols-[1.2fr_1fr_1fr] gap-6 border-b border-paper/15 py-3 text-dim-ink md:grid">
+                <div className="label hidden grid-cols-[1.2fr_1fr_1fr] gap-6 border-b border-paper/15 py-3 text-dim-ink md:grid">
                   <span>Asset</span>
                   <span>Largest payment</span>
                   <span>Rolling limit</span>
@@ -368,7 +368,7 @@ export function RangeApp() {
             </div>
 
             <div>
-              <h3 className="eyebrow text-dim-ink">May pay only</h3>
+              <h3 className="label text-dim-ink">May pay only</h3>
               <ul className="mt-4 flex flex-col gap-2">
                 {policy.payees.map((p) => (
                   <li key={p} className="mono break-all text-[0.95rem] text-paper/85">
@@ -398,7 +398,7 @@ export function RangeApp() {
       >
         <div className="flex flex-col gap-16">
           <div>
-            <h3 className="eyebrow text-dim-ink">Hall of fame</h3>
+            <h3 className="label text-dim-ink">Hall of fame</h3>
             {log.hallOfFame.length === 0 ? (
               <p className="serif mt-4 text-[clamp(1.8rem,4vw,2.8rem)] leading-tight">
                 Nobody yet. <span className="text-paper/55">The strings hold.</span>
@@ -420,7 +420,7 @@ export function RangeApp() {
 
           <div>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="eyebrow text-dim-ink">Live attempts</h3>
+              <h3 className="label text-dim-ink">Live attempts</h3>
               <span className="text-[0.85rem] text-dim-ink">Updates every 15 seconds</span>
             </div>
             {log.entries.length === 0 ? (

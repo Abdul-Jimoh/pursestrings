@@ -173,7 +173,7 @@ export function Dashboard() {
 
         <div className="dash-fade reveal mt-12 grid gap-8 lg:grid-cols-2 lg:gap-16">
           <form onSubmit={open} className="flex flex-col gap-3">
-            <label htmlFor="purse" className="eyebrow text-dim-ink">
+            <label htmlFor="purse" className="label text-dim-ink">
               Pursestrings account
             </label>
             <div className="flex gap-3">
@@ -186,26 +186,26 @@ export function Dashboard() {
               />
               <button
                 type="submit"
-                className="eyebrow shrink-0 border border-paper/40 px-4 transition-colors hover:bg-paper hover:text-ink"
+                className="label shrink-0 border border-paper/40 px-4 transition-colors hover:bg-paper hover:text-ink"
               >
                 Open
               </button>
             </div>
           </form>
           <div className="flex flex-col gap-3">
-            <p className="eyebrow text-dim-ink">Your wallet</p>
+            <p className="label text-dim-ink">Your wallet</p>
             {me ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
                 <span className="mono break-all text-[0.95rem]">{me}</span>
                 <span
-                  className={`eyebrow border px-2 py-1 text-[0.65rem] ${owner ? "border-paid text-paid" : "border-paper/30 text-paper/60"}`}
+                  className={`label border px-2 py-1 ${owner ? "border-paid text-paid" : "border-paper/30 text-paper/60"}`}
                 >
                   {owner ? "Owner" : "Read only"}
                 </span>
                 <button
                   type="button"
                   onClick={() => disconnect().then(() => setMe(null))}
-                  className="eyebrow text-dim-ink hover:text-paper"
+                  className="label text-dim-ink hover:text-paper"
                 >
                   Disconnect
                 </button>
@@ -253,7 +253,7 @@ export function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setNotice(null)}
-                  className="eyebrow shrink-0 text-dim-ink hover:text-paper"
+                  className="label shrink-0 text-dim-ink hover:text-paper"
                 >
                   Close
                 </button>
@@ -293,7 +293,7 @@ export function Dashboard() {
                 )}
               </div>
               <div>
-                <h3 className="eyebrow text-dim-ink">Agent keys</h3>
+                <h3 className="label text-dim-ink">Agent keys</h3>
                 <div className="mt-4">
                   <Agents snap={snap} owner={owner && !busy} act={act} />
                 </div>

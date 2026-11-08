@@ -1,63 +1,77 @@
 import { ArrowUpRight } from "lucide-react";
 import { reasonName, type Step } from "@/lib/range";
+import { Bubble, ChatLog } from "../ChatLog";
 
 const explorer = (tx: string) => `https://testnet.nearblocks.io/txns/${tx}`;
 
-function decisionLine(step: Extract<Step, { kind: "tool" }>) {
+type Tone = "paid" | "wait" | "refused";
+
+function decisionLine(step: Extract<Step, { kind: "tool" }>): { tone: Tone; text: string } | null {
   const d = step.decision;
   if (!d) return null;
-  if ("Approved" in d) return <span className="text-paid">Approved: inside the policy</span>;
+  if ("Approved" in d) return { tone: "paid", text: "Approved: inside the policy" };
   if ("NeedsCosign" in d || "NeedsRisk" in d)
-    return <span className="text-wait">Held: waits for the owner&rsquo;s co-sign</span>;
-  return <span className="text-refused">Refused: {reasonName(d.Denied.reason)}</span>;
+    return { tone: "wait", text: "Held: waits for the owner’s co-sign" };
+  return { tone: "refused", text: `Refused: ${reasonName(d.Denied.reason)}` };
 }
+
+const border: Record<Tone, string> = {
+  paid: "border-paid",
+  wait: "border-wait",
+  refused: "border-refused",
+};
+const text: Record<Tone, string> = {
+  paid: "text-paid",
+  wait: "text-wait",
+  refused: "text-refused",
+};
 
 export function Transcript({ prompt, steps }: { prompt: string; steps: Step[] }) {
   return (
-    <ol className="flex flex-col gap-6">
-      <li>
-        <p className="eyebrow text-dim-ink">You</p>
-        <p className="mt-2 whitespace-pre-wrap wrap-break-word leading-relaxed text-paper">
-          {prompt}
-        </p>
-      </li>
-      {steps.map((s, i) =>
-        s.kind === "agent" ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a transcript is an append-only log that never reorders
-          <li key={i}>
-            <p className="eyebrow text-dim-ink">Agent</p>
-            <p className="mt-2 whitespace-pre-wrap wrap-break-word leading-relaxed text-paper/70">
-              {s.text}
-            </p>
-          </li>
-        ) : (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a transcript is an append-only log that never reorders
-          <li key={i} className="border-l-2 border-string/60 pl-4">
-            <p className="eyebrow text-dim-ink">
-              {s.decision ? "Contract on NEAR" : "Agent checks"} · {s.name}
-            </p>
-            {s.decision && <p className="mt-2 leading-relaxed">{decisionLine(s)}</p>}
-            {s.tx && (
-              <a
-                href={explorer(s.tx)}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-[0.9rem] text-dim-ink underline underline-offset-4 hover:text-paper"
-              >
-                See the transaction <ArrowUpRight className="size-3.5" />
-              </a>
-            )}
-            <details className="mt-2">
-              <summary className="eyebrow cursor-pointer text-dim-ink hover:text-paper">
-                What the agent sent
-              </summary>
-              <pre className="mono mt-2 whitespace-pre-wrap break-all text-[0.78rem] leading-relaxed text-paper/55">
-                {JSON.stringify(s.args, null, 2)}
-              </pre>
-            </details>
-          </li>
-        ),
-      )}
-    </ol>
+    <ChatLog count={steps.length} className="max-h-[min(70vh,36rem)] pr-2">
+      <ol className="flex flex-col gap-5">
+        <Bubble who="you">{prompt}</Bubble>
+        {steps.map((s, i) => {
+          if (s.kind === "agent")
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a transcript is an append-only log that never reorders
+              <Bubble key={i} who="agent">
+                {s.text}
+              </Bubble>
+            );
+          const d = decisionLine(s);
+          return (
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: a transcript is an append-only log that never reorders
+              key={i}
+              className={`border-l-2 py-1 pl-4 ${d ? border[d.tone] : "border-paper/20"}`}
+            >
+              <p className="label text-dim-ink">
+                {d ? "The contract on NEAR" : "The agent checks"} · {s.name}
+              </p>
+              {d && <p className={`mt-1 font-semibold ${text[d.tone]}`}>{d.text}</p>}
+              {s.tx && (
+                <a
+                  href={explorer(s.tx)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-[0.88rem] text-dim-ink underline underline-offset-4 hover:text-paper"
+                >
+                  See the transaction <ArrowUpRight className="size-3.5" />
+                </a>
+              )}
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[0.88rem] text-dim-ink hover:text-paper">
+                  What the agent sent
+                </summary>
+                <pre className="mono mt-2 whitespace-pre-wrap break-all text-[0.78rem] leading-relaxed text-paper/55">
+                  {JSON.stringify(s.args, null, 2)}
+                </pre>
+              </details>
+            </li>
+          );
+        })}
+      </ol>
+    </ChatLog>
   );
 }

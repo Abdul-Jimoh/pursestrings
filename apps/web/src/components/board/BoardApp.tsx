@@ -19,6 +19,7 @@ import type { Request } from "@/lib/purse";
 import { near } from "@/lib/shop";
 import { connectAccount, connectedAccount, disconnect, walletCall } from "@/lib/wallet";
 import { Block } from "../Block";
+import { ChatLog } from "../ChatLog";
 import { Stats } from "../Stats";
 
 const account = (a: string) => `https://testnet.nearblocks.io/address/${a}`;
@@ -129,6 +130,26 @@ export function BoardApp() {
     },
   ];
 
+  const finished = (b: Bounty) => b.status === "Paid" || b.status === "Closed";
+  const live = board?.bounties.filter((x) => !finished(x.bounty)) ?? [];
+  const done = board?.bounties.filter((x) => finished(x.bounty)) ?? [];
+  const card = ({ id, bounty, request }: NonNullable<typeof board>["bounties"][number]) => (
+    <BountyCard
+      key={id}
+      id={id}
+      bounty={bounty}
+      request={request}
+      review={review.get(id)}
+      proposal={request ? proposals.get(bounty.req_id ?? -1) : undefined}
+      me={me}
+      isCouncil={isCouncil}
+      councilSize={council.length}
+      bond={bond}
+      busy={busy}
+      act={act}
+    />
+  );
+
   return (
     <div ref={root} className="surface-ink grain relative">
       <header className="px-5 pb-16 pt-32 md:px-10 md:pb-24 md:pt-44">
@@ -208,24 +229,40 @@ export function BoardApp() {
             <p className="mt-6 text-paper/60">Reading the board from testnet…</p>
           )}
 
-          <ul className="mt-10 flex flex-col gap-4">
-            {board?.bounties.map(({ id, bounty, request }) => (
-              <BountyCard
-                key={id}
-                id={id}
-                bounty={bounty}
-                request={request}
-                review={review.get(id)}
-                proposal={request ? proposals.get(bounty.req_id ?? -1) : undefined}
-                me={me}
-                isCouncil={isCouncil}
-                councilSize={council.length}
-                bond={bond}
-                busy={busy}
-                act={act}
-              />
-            ))}
-          </ul>
+          {board && (
+            <>
+              <h3 className="heading-card mt-12">
+                Open and in progress{" "}
+                <span className="text-[1rem] font-semibold text-dim-ink">{live.length}</span>
+              </h3>
+              {live.length === 0 ? (
+                <p className="mt-3 text-paper/60">
+                  Nothing open right now. A council member posts new bounties as the list needs
+                  them.
+                </p>
+              ) : (
+                <ul className="mt-5 flex flex-col gap-4">{live.map(card)}</ul>
+              )}
+              {done.length > 0 && (
+                <>
+                  <h3 className="heading-card mt-14">
+                    Paid and closed{" "}
+                    <span className="text-[1rem] font-semibold text-dim-ink">{done.length}</span>
+                  </h3>
+                  <p className="mt-2 text-paper/60">
+                    Newest first. Each paid bounty earned its claimant one point.
+                  </p>
+                  <ChatLog
+                    count={done.length}
+                    pin={false}
+                    className="mt-5 max-h-152 border-y border-paper/15 py-4 pr-2"
+                  >
+                    <ul className="flex flex-col gap-4">{done.map(card)}</ul>
+                  </ChatLog>
+                </>
+              )}
+            </>
+          )}
         </div>
       </Block>
 
@@ -235,7 +272,7 @@ export function BoardApp() {
       >
         {tiers.length > 0 ? (
           <div className="border-t border-paper/15">
-            <div className="eyebrow hidden grid-cols-4 gap-6 border-b border-paper/15 py-3 text-dim-ink md:grid">
+            <div className="label hidden grid-cols-4 gap-6 border-b border-paper/15 py-3 text-dim-ink md:grid">
               <span>Your points</span>
               <span>Paid with no approval</span>
               <span>One council member</span>
@@ -313,18 +350,20 @@ export function BoardApp() {
         {listed.length === 0 ? (
           <p className="text-paper/60">Empty so far.</p>
         ) : (
-          <ul className="flex flex-col border-t border-paper/15">
-            {listed.map((e) => (
-              <li
-                key={e.id}
-                className="grid gap-1 border-b border-paper/15 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_5rem] md:gap-6"
-              >
-                <span className="mono min-w-0 break-all text-refused">{e.address}</span>
-                <span className="min-w-0 wrap-break-word text-paper/70">{e.evidence}</span>
-                <span className="text-dim-ink">#{e.id}</span>
-              </li>
-            ))}
-          </ul>
+          <ChatLog count={listed.length} pin={false} className="max-h-128 pr-2">
+            <ul className="flex flex-col border-t border-paper/15">
+              {listed.map((e) => (
+                <li
+                  key={e.id}
+                  className="grid gap-1 border-b border-paper/15 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_5rem] md:gap-6"
+                >
+                  <span className="mono min-w-0 break-all text-refused">{e.address}</span>
+                  <span className="min-w-0 wrap-break-word text-paper/70">{e.evidence}</span>
+                  <span className="text-dim-ink">#{e.id}</span>
+                </li>
+              ))}
+            </ul>
+          </ChatLog>
         )}
       </Block>
 
@@ -336,7 +375,7 @@ export function BoardApp() {
         {board && (
           <dl className="grid gap-8 sm:grid-cols-2">
             <div className="min-w-0">
-              <dt className="eyebrow text-dim-ink">Owner: the community DAO</dt>
+              <dt className="label text-dim-ink">Owner: the community DAO</dt>
               <dd className="mt-2">
                 <a
                   href={account(board.owner)}
@@ -353,7 +392,7 @@ export function BoardApp() {
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="eyebrow text-dim-ink">Council</dt>
+              <dt className="label text-dim-ink">Council</dt>
               <dd className="mt-2 flex flex-col gap-1">
                 {council.map((c) => (
                   <a
@@ -373,7 +412,7 @@ export function BoardApp() {
               </dd>
             </div>
             <div className="min-w-0 sm:col-span-2">
-              <dt className="eyebrow text-dim-ink">The purse</dt>
+              <dt className="label text-dim-ink">The purse</dt>
               <dd className="mt-2">
                 <a
                   href={account(BOARD_ACCOUNT)}
@@ -431,7 +470,7 @@ function BountyCard({
   return (
     <li className="border border-paper/15 bg-ink p-5 md:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <p className="eyebrow">
+        <p className="label">
           <span className="text-dim-ink">#{id} · </span>
           <span className={statusTone[b.status]}>{statusText[b.status]}</span>
         </p>
@@ -453,7 +492,7 @@ function BountyCard({
 
       {review && review.work === b.work && (
         <div className="mt-4 border-l-2 border-string/60 pl-4">
-          <p className="eyebrow text-dim-ink">Bounty agent</p>
+          <p className="label text-dim-ink">Bounty agent</p>
           <p className={`mt-2 leading-relaxed ${review.accepted ? "text-paid" : "text-refused"}`}>
             {review.accepted ? "Accepted: " : "Not accepted: "}
             {review.reasons.join(" ")}
@@ -553,7 +592,7 @@ function BountyCard({
 
       {mine && (b.status === "Claimed" || b.status === "Submitted") && (
         <div className="mt-5">
-          <label htmlFor={`work-${id}`} className="eyebrow block text-dim-ink">
+          <label htmlFor={`work-${id}`} className="label block text-dim-ink">
             Your report: scam:&lt;address&gt; then your evidence
           </label>
           <textarea

@@ -91,75 +91,115 @@ export function Ledger() {
 
       <Stats stats={stats} className="mt-12" />
 
-      <section className="mt-16 max-w-6xl">
-        <h2 className="eyebrow text-dim-ink">Orders</h2>
-        {error && <p className="mt-4 text-refused">{error}</p>}
-        {orders?.length === 0 && <p className="mt-4 text-paper/60">No orders yet.</p>}
+      <section className="mt-20 md:mt-28">
+        <SectionHead
+          title="Orders"
+          count={orders?.length}
+          intro="Newest first. A check is paid out only once its report is delivered on-chain."
+        />
+        {error && <p className="mt-6 text-refused">{error}</p>}
+        {orders?.length === 0 && <p className="mt-6 text-paper/60">No orders yet.</p>}
         {orders && orders.length > 0 && (
-          <div className="mt-4 border-t border-paper/15">
-            <div className="eyebrow hidden grid-cols-[4rem_minmax(0,1.6fr)_minmax(0,1.2fr)_7rem_8rem_8rem] gap-4 border-b border-paper/15 py-3 text-dim-ink lg:grid">
-              <span>Order</span>
-              <span>Checked</span>
-              <span>Buyer</span>
-              <span>Price</span>
-              <span>Status</span>
-              <span>Verdict</span>
-            </div>
-            {orders.map((o) => (
-              <div
-                key={o.id}
-                className="grid gap-1 border-b border-paper/15 py-4 lg:grid-cols-[4rem_minmax(0,1.6fr)_minmax(0,1.2fr)_7rem_8rem_8rem] lg:gap-4"
-              >
-                <span className="font-bold">#{o.id}</span>
-                <span className="mono min-w-0 break-all text-[0.92rem]">{target(o.item)}</span>
-                <span className="mono min-w-0 break-all text-[0.92rem] text-paper/65">
-                  {o.buyer ?? "anyone"}
-                </span>
-                <span>{near(o.price)}</span>
-                <span className="text-paper/75">
-                  {statusText[o.status]}
-                  <span className="block text-[0.8rem] text-dim-ink">{when(o.quoted_at)}</span>
-                </span>
-                <span>
-                  {o.verdict ? (
-                    <span style={{ color: levelColor[o.verdict] }}>{o.verdict}</span>
-                  ) : (
-                    <span className="text-dim-ink">–</span>
-                  )}
-                  {o.deliverTx && (
-                    <a
-                      href={`https://testnet.nearblocks.io/txns/${o.deliverTx}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 flex items-center gap-1 text-[0.8rem] text-dim-ink underline underline-offset-4 hover:text-paper"
+          <>
+            <table className="mt-8 hidden w-full border-collapse text-left lg:table">
+              <thead>
+                <tr className="border-b border-paper/20">
+                  {["Order", "Address checked", "Buyer", "Price", "Status", "Verdict"].map((h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className={`${TH} ${h === "Price" ? "text-right" : ""}`}
                     >
-                      delivery <ArrowUpRight className="size-3" />
-                    </a>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr
+                    key={o.id}
+                    className="border-b border-paper/10 align-top transition-colors hover:bg-paper/3"
+                  >
+                    <td className="py-5 pr-4">
+                      <span className="text-[1.05rem] font-bold">#{o.id}</span>
+                      <span className="mt-1 block whitespace-nowrap text-[0.85rem] text-dim-ink">
+                        {when(o.quoted_at)}
+                      </span>
+                    </td>
+                    <td className="mono py-5 pr-6 text-[0.9rem] break-all text-paper">
+                      {target(o.item)}
+                    </td>
+                    <td className="mono py-5 pr-6 text-[0.85rem] break-all text-paper/60">
+                      {o.buyer ?? "anyone"}
+                    </td>
+                    <td className="py-5 pr-6 text-right whitespace-nowrap tabular-nums">
+                      {near(o.price)}
+                    </td>
+                    <td className="py-5 pr-6">
+                      <StatusPill status={o.status} />
+                    </td>
+                    <td className="py-5">
+                      <Verdict order={o} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <ul className="mt-8 flex flex-col gap-3 lg:hidden">
+              {orders.map((o) => (
+                <li key={o.id} className="border border-paper/15 bg-ink-2 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[1.05rem] font-bold">#{o.id}</span>
+                    <StatusPill status={o.status} />
+                  </div>
+                  <p className="mono mt-4 text-[0.92rem] break-all">{target(o.item)}</p>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[0.9rem]">
+                    <div className="col-span-2 min-w-0">
+                      <dt className={TH}>Buyer</dt>
+                      <dd className="mono mt-1 break-all text-paper/65">{o.buyer ?? "anyone"}</dd>
+                    </div>
+                    <div>
+                      <dt className={TH}>Price</dt>
+                      <dd className="mt-1 tabular-nums">{near(o.price)}</dd>
+                    </div>
+                    <div>
+                      <dt className={TH}>Quoted</dt>
+                      <dd className="mt-1 text-paper/65">{when(o.quoted_at)}</dd>
+                    </div>
+                    <div>
+                      <dt className={TH}>Verdict</dt>
+                      <dd className="mt-1">
+                        <Verdict order={o} />
+                      </dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
 
-      <section className="mt-16 max-w-6xl">
-        <h2 className="eyebrow text-dim-ink">The agent&rsquo;s own spending</h2>
-        <p className="mt-4 max-w-2xl leading-relaxed text-paper/60">
-          The agent pays its running costs through the same contract, under its own daily cap.
-        </p>
+      <section className="mt-20 md:mt-28">
+        <SectionHead
+          title="The agent’s own spending"
+          count={costs.length}
+          intro="The agent pays its running costs through the same contract, under its own daily cap."
+        />
         {costs.length === 0 ? (
-          <p className="mt-4 text-paper/60">Nothing spent yet.</p>
+          <p className="mt-6 text-paper/60">Nothing spent yet.</p>
         ) : (
-          <ul className="mt-4 flex flex-col border-t border-paper/15">
+          <ul className="mt-8 flex flex-col border-t border-paper/20">
             {costs.map((c) => (
               <li
                 key={c.id}
-                className="grid gap-1 border-b border-paper/15 py-4 md:grid-cols-[4rem_minmax(0,1fr)_8rem_8rem] md:gap-4"
+                className="grid gap-1 border-b border-paper/10 py-4 md:grid-cols-[4rem_minmax(0,1fr)_8rem_8rem] md:gap-4"
               >
                 <span className="font-bold">#{c.id}</span>
-                <span className="min-w-0 wrap-break-word text-paper/75">{c.spend.purpose}</span>
-                <span>{near(c.spend.amount)}</span>
+                <span className="min-w-0 wrap-break-word text-paper/80">{c.spend.purpose}</span>
+                <span className="tabular-nums md:text-right">{near(c.spend.amount)}</span>
                 <span className="text-paper/60">{c.status}</span>
               </li>
             ))}
@@ -167,5 +207,70 @@ export function Ledger() {
         )}
       </section>
     </div>
+  );
+}
+
+const TH = "label text-dim-ink pb-3 pr-6";
+
+function SectionHead({ title, count, intro }: { title: string; count?: number; intro: string }) {
+  return (
+    <header>
+      <h2 className="heading-section">
+        {title}
+        {count !== undefined && (
+          <span className="ml-3 text-[1rem] font-semibold tracking-normal text-dim-ink tabular-nums">
+            {count}
+          </span>
+        )}
+      </h2>
+      <p className="mt-3 max-w-2xl leading-relaxed text-paper/65">{intro}</p>
+    </header>
+  );
+}
+
+const statusTone: Record<LedgerOrder["status"], string> = {
+  Quoted: "var(--color-dim-ink)",
+  Paid: "var(--color-wait)",
+  Delivered: "var(--color-paid)",
+  Refunded: "var(--color-string)",
+};
+
+function Pill({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex items-center gap-2 whitespace-nowrap px-2.5 py-1 text-[0.85rem] font-semibold"
+      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}
+    >
+      <span className="size-1.5 rounded-full" style={{ background: color }} />
+      {children}
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: LedgerOrder["status"] }) {
+  return <Pill color={statusTone[status]}>{statusText[status]}</Pill>;
+}
+
+function Verdict({ order: o }: { order: LedgerOrder }) {
+  return (
+    <span className="flex flex-col items-start gap-1.5">
+      {o.verdict ? (
+        <Pill color={levelColor[o.verdict]}>{o.verdict}</Pill>
+      ) : (
+        <span className="text-[0.88rem] text-dim-ink">
+          {o.status === "Delivered" ? "Report not kept here" : "Not checked yet"}
+        </span>
+      )}
+      {o.deliverTx && (
+        <a
+          href={`https://testnet.nearblocks.io/txns/${o.deliverTx}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[0.85rem] text-dim-ink underline underline-offset-4 hover:text-paper"
+        >
+          Delivery <ArrowUpRight className="size-3" />
+        </a>
+      )}
+    </span>
   );
 }

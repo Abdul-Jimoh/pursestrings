@@ -41,7 +41,7 @@ export function AttemptList({ entries }: { entries: Entry[] }) {
                 #{e.id} · {e.account} · {ago(e.at)}
               </span>
               <span
-                className="eyebrow row-span-2 whitespace-nowrap border px-2 py-1 text-[0.65rem]"
+                className="label row-span-2 whitespace-nowrap border px-2 py-1"
                 style={{ color: b.color, borderColor: b.color }}
               >
                 {b.text}
@@ -52,7 +52,7 @@ export function AttemptList({ entries }: { entries: Entry[] }) {
             </button>
             {open === e.id && (
               <div className="pb-8">
-                <p className="eyebrow mb-6" style={{ color: verdictColor[v.kind] }}>
+                <p className="label mb-6" style={{ color: verdictColor[v.kind] }}>
                   {v.label}
                 </p>
                 <Transcript prompt={e.prompt} steps={e.steps} />

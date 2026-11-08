@@ -83,7 +83,7 @@ export function OrderTracker({
 
   return (
     <div>
-      <p className="eyebrow text-dim-ink">
+      <p className="label text-dim-ink">
         Order {id} · check on <span className="mono normal-case">{target(order.item)}</span>
       </p>
       <ol className="mt-6 flex flex-col gap-5 border-l border-paper/15 pl-6">
@@ -152,7 +152,7 @@ export function OrderTracker({
 
       {delivered && report && (
         <div className="mt-10 border border-paper/15 bg-ink p-5 md:p-8">
-          <p className="eyebrow text-dim-ink">The report</p>
+          <p className="label text-dim-ink">The report</p>
           <p
             className="display mt-4 text-[clamp(2rem,6vw,3.2rem)]"
             style={{ color: levelColor[report.verdict.level] }}
@@ -160,7 +160,7 @@ export function OrderTracker({
             {report.verdict.level}.
           </p>
           <p className="mt-6 whitespace-pre-wrap leading-relaxed text-paper/85">{report.text}</p>
-          <h3 className="eyebrow mt-8 text-dim-ink">Why</h3>
+          <h3 className="label mt-8 text-dim-ink">Why</h3>
           <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 leading-relaxed text-paper/70">
             {report.verdict.reasons.map((r) => (
               <li key={r}>{r}</li>

@@ -59,6 +59,39 @@ body {
   text-transform: uppercase;
 }
 
+/* The type scale: section heading, card heading, label, then body copy. Labels name data (stats,
+   fields, table columns); the mono eyebrow is kept for nav, kickers and the footer. */
+@utility heading-section {
+  font-size: clamp(1.75rem, 2.6vw, 2.4rem);
+  font-weight: 800;
+  font-variation-settings: "wdth" 106;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+@utility heading-card {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+@utility label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* Inner scroll areas such as chats; Lenis is told to leave their wheel events alone. */
+@utility scroll-box {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-paper) 22%, transparent) transparent;
+}
+
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 0.75rem;

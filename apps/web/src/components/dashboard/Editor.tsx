@@ -132,7 +132,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
   return (
     <div className="flex flex-col gap-14">
       <div>
-        <h3 className="eyebrow text-dim-ink">Limits per asset</h3>
+        <h3 className="label text-dim-ink">Limits per asset</h3>
         <p className="mt-2 text-[0.95rem] text-paper/55">
           In whole units. Leave the co-sign line empty to never ask you.
         </p>
@@ -194,7 +194,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
       </div>
 
       <div>
-        <h3 className="eyebrow text-dim-ink">Who it may pay</h3>
+        <h3 className="label text-dim-ink">Who it may pay</h3>
         <p className="mt-2 text-[0.9rem] text-paper/60">
           The only places money can go. A NEAR account looks like shop.testnet; an address on
           another chain looks like 0x… and is paid through Chain Signatures.
@@ -216,7 +216,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
                 </span>
                 <button
                   type="button"
-                  className="eyebrow text-dim-ink hover:text-paper"
+                  className="label text-dim-ink hover:text-paper"
                   onClick={() =>
                     isNew
                       ? setD((s) => ({ ...s, added: s.added.filter((x) => recipientKey(x) !== k) }))
@@ -263,7 +263,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
       </div>
 
       <div>
-        <h3 className="eyebrow text-dim-ink">How often</h3>
+        <h3 className="label text-dim-ink">How often</h3>
         <label className="mt-4 flex max-w-sm flex-col gap-2">
           <span className="text-[0.9rem] text-paper/60">
             Most payments per {span(policy.velocity?.period_s ?? 3_600)}
@@ -279,7 +279,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
       </div>
 
       <div className="border border-paper/20 bg-ink p-5 md:p-7">
-        <h3 className="eyebrow text-dim-ink">Read back before you sign</h3>
+        <h3 className="label text-dim-ink">Read back before you sign</h3>
         {result.error ? (
           <p className="mt-4 text-refused">{result.error}</p>
         ) : result.ops.length === 0 ? (
@@ -295,7 +295,7 @@ export function Editor({ policy, owner, act }: { policy: Policy; owner: boolean;
                     className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-6"
                   >
                     <span className="wrap-break-word leading-relaxed">{describe(op)}</span>
-                    <span className={`eyebrow ${now ? "text-paid" : "text-wait"}`}>
+                    <span className={`label ${now ? "text-paid" : "text-wait"}`}>
                       {now ? "Applies now" : `Waits ${duration(policy.timelock_s)}`}
                     </span>
                   </li>

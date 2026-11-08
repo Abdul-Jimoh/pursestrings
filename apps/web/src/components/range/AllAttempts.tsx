@@ -57,7 +57,7 @@ export function AllAttempts() {
             type="button"
             disabled={loading}
             onClick={() => more(oldest)}
-            className="eyebrow mt-8 border border-paper/40 px-5 py-3 transition-colors hover:bg-paper hover:text-ink disabled:opacity-40"
+            className="label mt-8 border border-paper/40 px-5 py-3 transition-colors hover:bg-paper hover:text-ink disabled:opacity-40"
           >
             {loading ? "Loading…" : "Show older"}
           </button>

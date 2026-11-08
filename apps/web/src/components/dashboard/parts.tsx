@@ -75,7 +75,7 @@ function Button({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`eyebrow border px-4 py-2.5 transition-colors disabled:pointer-events-none disabled:opacity-35 ${tones[tone]}`}
+      className={`label border px-4 py-2.5 transition-colors disabled:pointer-events-none disabled:opacity-35 ${tones[tone]}`}
     >
       {children}
     </button>
@@ -247,8 +247,8 @@ export function Queue({
         return (
           <li key={p.id} className="border border-paper/15 p-5 md:p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="eyebrow text-dim-ink">Change #{p.id}</span>
-              <span className={`eyebrow ${ready ? "text-paid" : "text-wait"}`}>
+              <span className="label text-dim-ink">Change #{p.id}</span>
+              <span className={`label ${ready ? "text-paid" : "text-wait"}`}>
                 {ready ? "Ready to apply" : `Applies ${until(p.eta, now)}`}
               </span>
             </div>
@@ -309,7 +309,7 @@ export function Stream({ snap, now }: { snap: Snapshot; now: number }) {
             <span className="mono text-[0.78rem] text-dim-ink">
               #{id} · {ago(req.created_at, now)}
             </span>
-            <span className="eyebrow row-span-2 self-start text-right" style={{ color: s.color }}>
+            <span className="label row-span-2 self-start text-right" style={{ color: s.color }}>
               {s.text}
             </span>
             <span className="min-w-0 wrap-break-word leading-snug">

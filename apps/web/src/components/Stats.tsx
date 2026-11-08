@@ -7,7 +7,7 @@ export function Stats({ stats, className = "" }: { stats: Stat[]; className?: st
     >
       {stats.map((s) => (
         <div key={s.label} className="bg-ink p-6 md:p-8">
-          <dt className="eyebrow text-dim-ink">{s.label}</dt>
+          <dt className="label text-dim-ink">{s.label}</dt>
           <dd
             className={`mt-3 flex items-center gap-3 text-[1.6rem] font-bold leading-tight tracking-[-0.02em] ${s.tone ?? ""}`}
           >
