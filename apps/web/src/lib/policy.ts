@@ -55,6 +55,11 @@ export interface Policy {
   split?: { account: string; bps: number }[];
   delivery_s?: number;
   refund_limits?: { asset: Asset; window: Window }[];
+  council?: string[];
+  trust?: {
+    asset: Asset;
+    tiers: { points: number; auto_up_to: string; council_up_to: string }[];
+  }[];
 }
 
 let provider: JsonRpcProvider | undefined;

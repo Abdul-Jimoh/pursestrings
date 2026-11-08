@@ -11,6 +11,7 @@ import { lockScroll } from "./SmoothScroll";
 const links = [
   { href: "/#how", label: "How it holds" },
   { href: "/shop", label: "The shop" },
+  { href: "/bounties", label: "Bounties" },
   { href: "/range", label: "The Range" },
   { href: "/app", label: "Dashboard" },
 ];

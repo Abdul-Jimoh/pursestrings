@@ -65,6 +65,11 @@ export function Footer() {
             </Link>
           </li>
           <li>
+            <Link href="/bounties" className="hover:text-string">
+              Bounties
+            </Link>
+          </li>
+          <li>
             <Link href="/range" className="hover:text-string">
               The Range
             </Link>
