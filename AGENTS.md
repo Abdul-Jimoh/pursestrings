@@ -22,7 +22,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 
 ```sh
 make test       # contract unit tests, sandbox tests, TypeScript typecheck and tests
-make demo       # local chain + the scripted demo agent; ends with "demo OK: 22/22 checks passed"
+make demo       # local chain + the scripted demo agent; ends with "demo OK: 37/37 checks passed"
 make redteam    # six attacks; output must match scripts/redteam/expected.txt
 make lint       # rustfmt, clippy -D warnings, Biome
 ```

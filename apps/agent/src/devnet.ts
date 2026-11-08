@@ -5,6 +5,8 @@ export interface Devnet {
   rpc: string;
   genesis_secret_key: string;
   agent_secret_key: string;
+  shop_agent_secret_key: string;
+  board_agent_secret_key: string;
   accounts: Record<
     | "owner"
     | "purse"
@@ -15,7 +17,14 @@ export interface Devnet {
     | "wrap"
     | "shop"
     | "solver"
-    | "attacker",
+    | "attacker"
+    | "checks"
+    | "dao"
+    | "bounties"
+    | "council"
+    | "steward"
+    | "buyer"
+    | "newcomer",
     string
   >;
   evm: { chain_id: number; usdc: string; merchant: string; derived_public_key: string };

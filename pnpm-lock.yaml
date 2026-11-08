@@ -29,6 +29,9 @@ importers:
       '@pursestrings/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@pursestrings/shop':
+        specifier: workspace:*
+        version: link:../shop
       near-api-js:
         specifier: 7.4.0
         version: 7.4.0

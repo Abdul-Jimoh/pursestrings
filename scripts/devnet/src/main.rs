@@ -1,6 +1,7 @@
-//! A local NEAR sandbox with everything Pursestrings talks to: the factory, one keyless account
-//! made by it, the `intents.near` code deployed on mainnet, two test tokens and a stand-in MPC
-//! signer. Writes what clients need to `.devnet/devnet.json`, then runs until stopped.
+//! A local NEAR sandbox with everything Pursestrings talks to: the factory, keyless accounts made
+//! by it (a procurement agent's, a shop's and a community bounty board's), the `intents.near` and
+//! Sputnik DAO code deployed on mainnet, two test tokens and a stand-in MPC signer. Writes what
+//! clients need to `.devnet/devnet.json`, then runs until stopped.
 
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ const BASE_USDC: &str = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
 const MERCHANT: &str = "0x4d45524348414e54000000000000000000000001";
 const USDC: u128 = 1_000_000;
 const WNEAR: u128 = 10u128.pow(24);
+const MILLI_NEAR: u128 = 10u128.pow(21);
 const DAY: u32 = 86_400;
 
 struct Net {
@@ -107,6 +109,58 @@ fn build(contract: &str) -> Result<Vec<u8>> {
 
 fn usdc(n: u128) -> String {
     (n * USDC).to_string()
+}
+
+fn milli(n: u128) -> String {
+    (n * MILLI_NEAR).to_string()
+}
+
+/// A shop selling "Check before you pay": a price floor the agent can't quote under, 70% of each
+/// sale to the owner and 20% to the community DAO, refunds capped per day.
+fn shop_ops(owner: &AccountId, dao: &AccountId) -> Value {
+    json!([
+        { "SetAssetRule": {
+            "asset": "Near",
+            "per_tx_cap": milli(200),
+            "windows": [{ "period_s": DAY, "limit": milli(500) }],
+            "cosign_above": milli(100),
+            "risk_check_above": null
+        }},
+        { "SetPriceFloor": { "asset": "Near", "min": milli(50) } },
+        { "SetSplit": { "shares": [
+            { "account": owner, "bps": 7_000 },
+            { "account": dao, "bps": 2_000 }
+        ]}},
+        { "SetRefundLimit": { "asset": "Near", "window": { "period_s": DAY, "limit": milli(300) } } },
+        { "SetVelocity": { "velocity": { "max": 20, "period_s": 3_600 } } },
+        { "SetFeeBudget": { "period_s": DAY, "limit": "1000" } },
+        { "SetPendingTtl": { "seconds": 1_800 } },
+        { "SetDeliveryWindow": { "seconds": 600 } },
+        { "SetTimelock": { "seconds": 3_600 } }
+    ])
+}
+
+/// The DAO's bounty board: who approves a payout depends on the claimant's earned points.
+fn board_ops(council: &[&AccountId]) -> Value {
+    let mut ops = vec![json!({ "SetAssetRule": {
+        "asset": "Near",
+        "per_tx_cap": milli(1_000),
+        "windows": [{ "period_s": DAY, "limit": milli(3_000) }],
+        "cosign_above": null,
+        "risk_check_above": null
+    }})];
+    ops.extend(council.iter().map(|a| json!({ "AddCouncil": { "account": a } })));
+    ops.extend([
+        json!({ "SetTrust": { "asset": "Near", "tiers": [
+            { "points": 0, "auto_up_to": "0", "council_up_to": milli(300) },
+            { "points": 1, "auto_up_to": milli(100), "council_up_to": milli(500) },
+            { "points": 3, "auto_up_to": milli(300), "council_up_to": milli(1_000) }
+        ]}}),
+        json!({ "SetVelocity": { "velocity": { "max": 20, "period_s": 3_600 } } }),
+        json!({ "SetPendingTtl": { "seconds": DAY } }),
+        json!({ "SetTimelock": { "seconds": 3_600 } }),
+    ]);
+    Value::Array(ops)
 }
 
 /// The demo procurement agent's policy: $150 a day of USDC wherever it's spent, at most $100 a
@@ -243,18 +297,25 @@ async fn main() -> Result {
         one_yocto,
     )
     .await?;
-    let new_args = json!({ "owner": owner, "mpc": mpc, "intents": intents, "ops": policy_ops() });
-    let create = borsh::to_vec(&("procurement", purse_code, new_args.to_string().into_bytes()))?;
-    Contract(factory.clone())
-        .call_function_raw("create", create)
-        .transaction()
-        .deposit(NearToken::from_near(8))
-        .gas(NearGas::from_tgas(300))
-        .with_signer(owner.clone(), n.root.clone())
-        .send_to(&n.net)
-        .await?
-        .assert_success();
-    let purse: AccountId = format!("procurement.{factory}").parse()?;
+    let create = |name: &'static str, account_owner: &AccountId, ops: Value| {
+        let new_args =
+            json!({ "owner": account_owner, "mpc": mpc, "intents": intents, "ops": ops });
+        let args = borsh::to_vec(&(name, &purse_code, new_args.to_string().into_bytes()));
+        let (n, factory, owner) = (&n, factory.clone(), owner.clone());
+        async move {
+            Contract(factory.clone())
+                .call_function_raw("create", args?)
+                .transaction()
+                .deposit(NearToken::from_near(8))
+                .gas(NearGas::from_tgas(300))
+                .with_signer(owner, n.root.clone())
+                .send_to(&n.net)
+                .await?
+                .assert_success();
+            Ok::<AccountId, Box<dyn Error>>(format!("{name}.{factory}").parse()?)
+        }
+    };
+    let purse = create("procurement", &owner, policy_ops()).await?;
 
     let agent_key = near_api::signer::generate_secret_key()?;
     n.call(
@@ -309,6 +370,64 @@ async fn main() -> Result {
         .await?;
     }
 
+    eprintln!("creating the shop, the community DAO and its bounty board…");
+    let dao = n.account("community", 20).await?;
+    let council = n.account("council", 10).await?;
+    let steward = n.account("steward", 10).await?;
+    let buyer = n.account("buyer", 10).await?;
+    let newcomer = n.account("newcomer", 10).await?;
+    n.deploy(
+        &dao,
+        std::fs::read(
+            root_dir().join("contracts/pursestrings/tests/fixtures/sputnikdao2-3.2.wasm"),
+        )?,
+        Some(json!({
+            "config": { "name": "community", "purpose": "grows the scam list", "metadata": "" },
+            "policy": [council]
+        })),
+    )
+    .await?;
+    let shop_account = create("checks", &owner, shop_ops(&owner, &dao)).await?;
+    let shop_agent = near_api::signer::generate_secret_key()?;
+    n.call(
+        &owner,
+        &shop_account,
+        "add_agent",
+        json!({ "public_key": shop_agent.public_key(), "allowance": milli(1_000) }),
+        one_yocto,
+    )
+    .await?;
+    let board = create("bounties", &dao, board_ops(&[&council, &steward])).await?;
+    let board_agent = near_api::signer::generate_secret_key()?;
+    // The DAO owns the board, so adding its agent takes a proposal and the council's vote.
+    let add_agent = json!({ "public_key": board_agent.public_key(), "allowance": milli(1_000) });
+    let kind = json!({ "FunctionCall": {
+        "receiver_id": board,
+        "actions": [{
+            "method_name": "add_agent",
+            "args": near_api::types::json::Base64VecU8(add_agent.to_string().into_bytes()),
+            "deposit": "1",
+            "gas": "100000000000000"
+        }]
+    }});
+    let id = n
+        .call(
+            &council,
+            &dao,
+            "add_proposal",
+            json!({ "proposal": { "description": "add the bounty agent", "kind": kind } }),
+            NearToken::from_near(1),
+        )
+        .await?;
+    n.call(
+        &council,
+        &dao,
+        "act_proposal",
+        json!({ "id": id, "action": "VoteApprove", "proposal": kind }),
+        zero,
+    )
+    .await?;
+
     let derived_evm: String = Contract(mpc.clone())
         .call_function(
             "derived_public_key",
@@ -322,10 +441,14 @@ async fn main() -> Result {
         "rpc": n.sandbox.rpc_addr,
         "genesis_secret_key": secret,
         "agent_secret_key": agent_key.to_string(),
+        "shop_agent_secret_key": shop_agent.to_string(),
+        "board_agent_secret_key": board_agent.to_string(),
         "accounts": {
             "owner": owner, "purse": purse, "factory": factory, "mpc": mpc,
             "intents": intents, "usdc": usdc_token, "wrap": wrap, "shop": shop,
-            "solver": solver, "attacker": attacker
+            "solver": solver, "attacker": attacker,
+            "checks": shop_account, "dao": dao, "bounties": board, "council": council,
+            "steward": steward, "buyer": buyer, "newcomer": newcomer
         },
         "evm": {
             "chain_id": BASE_SEPOLIA,

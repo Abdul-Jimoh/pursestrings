@@ -13,6 +13,7 @@
   "dependencies": {
     "@noble/curves": "2.2.0",
     "@pursestrings/sdk": "workspace:*",
+    "@pursestrings/shop": "workspace:*",
     "near-api-js": "7.4.0"
   }
 }

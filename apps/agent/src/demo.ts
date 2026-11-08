@@ -1,14 +1,28 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import {
   type Decision,
   type DenyReason,
   decodeSignedTx,
   describeDecision,
+  describeQuote,
   evmAddress,
   type Outcome,
   Pursestrings,
   type SpendRequest,
 } from "@pursestrings/sdk";
+import {
+  type Chat,
+  deliverPaid,
+  gather,
+  Reports,
+  Reviews,
+  reviewSubmitted,
+  scamListFrom,
+  verdict,
+} from "@pursestrings/shop";
 import { Account, actions, baseEncode, JsonRpcProvider, type KeyPairString } from "near-api-js";
 import { loadDevnet } from "./devnet.ts";
 
@@ -321,7 +335,230 @@ see(
   "the owner saw it and cancelled it",
 );
 
-section("9. Kill switch");
+section('9. The agent\'s shop sells "Check before you pay"');
+const shopPurse = new Pursestrings(d.rpc, A.checks);
+const seller = shopPurse.agent(d.shop_agent_secret_key);
+const buyer = shopPurse.caller(A.buyer, d.genesis_secret_key);
+const milli = (n: number) => BigInt(n) * 10n ** 21n;
+const nearAmt = (y: string | bigint) => `${Number(BigInt(y) / 10n ** 21n) / 1000} NEAR`;
+const nearBalance = async (id: string) =>
+  BigInt(((await provider.viewAccount({ accountId: id })) as unknown as { amount: string }).amount);
+const noModel: Chat = {
+  chat: async () => {
+    throw new Error("no model in the demo");
+  },
+};
+const sources = {
+  nearRpc: d.rpc,
+  // No transaction indexer on a local chain: the check counts the account as unused.
+  nearTx: d.rpc,
+  blockscout: d.rpc,
+  known: [A.owner, A.dao, A.checks, A.bounties, A.usdc, A.wrap],
+};
+const scratch = mkdtempSync(join(tmpdir(), "pursestrings-demo-"));
+const reports = new Reports(join(scratch, "reports.jsonl"));
+const board = new Pursestrings(d.rpc, A.bounties);
+const sell = async (target: string, offers: bigint[]) => {
+  let order: number | undefined;
+  for (const price of offers) {
+    console.log(`   buyer: "I'll pay ${nearAmt(price)} for a check of ${target}"`);
+    const q = await seller.quote(A.buyer, "Near", price, `check:${target}`);
+    console.log(`   contract: ${q.value ? describeQuote(q.value, nearAmt) : q.error}`);
+    if (q.value && "Quoted" in q.value) {
+      order = q.value.Quoted.order_id;
+      break;
+    }
+  }
+  if (order === undefined) throw new Error("no quote");
+  return order;
+};
+
+const lookalike = "communlty.sandbox";
+const order = await sell(lookalike, [milli(10), milli(80)]);
+see(
+  (await shopPurse.recentOrders(5)).length === 1,
+  "the agent went along with 0.01 NEAR, but the contract won't quote under the owner's floor; 0.08 it will",
+);
+const short = await buyer.payNear(order, milli(50));
+see(
+  !short.ok && /less than the price/.test(short.error ?? ""),
+  "paying 0.05 NEAR against the 0.08 quote is refused and the NEAR goes back",
+);
+const [owner0, dao0] = await Promise.all([nearBalance(A.owner), nearBalance(A.dao)]);
+await buyer.payNear(order, milli(80));
+const held = await shopPurse.order(order);
+see(
+  held?.status === "Paid" && held.held === milli(80).toString(),
+  "the buyer pays 0.08 NEAR; the contract holds it until the agent delivers",
+);
+await deliverPaid({
+  shop: shopPurse,
+  agent: seller,
+  model: noModel,
+  reports,
+  sources,
+  board,
+  log: () => {},
+});
+const report = reports.get(order);
+const sold = await shopPurse.order(order);
+see(
+  report?.verdict.level === "do not pay" && sold?.status === "Delivered",
+  `the check says "${report?.verdict.level}": ${report?.verdict.reasons[0]}`,
+);
+see(
+  sold?.receipt === report?.receipt,
+  `the report's hash is on-chain as the delivery receipt (${report?.receipt?.slice(0, 19)}…), so the buyer can verify it`,
+);
+await new Promise((r) => setTimeout(r, 2_000));
+const [owner1, dao1] = await Promise.all([nearBalance(A.owner), nearBalance(A.dao)]);
+see(
+  owner1 - owner0 === milli(56) && dao1 - dao0 === milli(16),
+  `on delivery the split pays out: owner +${nearAmt(owner1 - owner0)}, community DAO +${nearAmt(dao1 - dao0)}, the shop keeps ${nearAmt(sold?.held ?? "0")}`,
+);
+
+section("10. The community's bounty board, run by its DAO");
+const council = board.caller(A.council, d.genesis_secret_key);
+const steward = board.caller(A.steward, d.genesis_secret_key);
+const newcomer = board.caller(A.newcomer, d.genesis_secret_key);
+const bountyAgent = board.agent(d.board_agent_secret_key);
+const reviews = new Reviews(join(scratch, "reviews.jsonl"));
+const review = async () =>
+  (
+    await reviewSubmitted({
+      board,
+      agent: bountyAgent,
+      model: noModel,
+      sources,
+      reviews,
+      log: () => {},
+    })
+  )[0];
+async function daoVotes(description: string, method: string, args: object) {
+  const kind = {
+    FunctionCall: {
+      receiver_id: A.bounties,
+      actions: [
+        {
+          method_name: method,
+          args: Buffer.from(JSON.stringify(args)).toString("base64"),
+          deposit: "1",
+          gas: "150000000000000",
+        },
+      ],
+    },
+  };
+  const added = await council.call<number>(
+    "add_proposal",
+    { proposal: { description, kind } },
+    { contractId: A.dao, deposit: WNEAR },
+  );
+  return council.call(
+    "act_proposal",
+    { id: added.value, action: "VoteApprove", proposal: kind },
+    { contractId: A.dao },
+  );
+}
+async function bountyPaid(id: number) {
+  for (let i = 0; i < 20 && (await board.bounty(id))?.status !== "Paid"; i++)
+    await new Promise((r) => setTimeout(r, 500));
+  return (await board.bounty(id))?.status === "Paid";
+}
+async function submitReport(who: typeof newcomer, reward: number, work: string) {
+  const posted = await council.postBounty(
+    "Report a scam address: scam:<address> <evidence>",
+    "Near",
+    milli(reward),
+  );
+  const id = posted.value as number;
+  await who.claimBounty(id);
+  await who.submitBounty(id, work);
+  console.log(
+    `   ${who.signer.accountId} claims bounty ${id} (${nearAmt(milli(reward))}): "${work}"`,
+  );
+  const r = await review();
+  if (r?.decision)
+    console.log(
+      `   bounty agent: ${r.reasons.join(" ")} → contract: ${describeDecision(r.decision, nearAmt)}`,
+    );
+  return { id, decision: r?.decision };
+}
+console.log(
+  `   owner of ${A.bounties}: ${await board.owner()}, a Sputnik DAO; council ${A.council}, ${A.steward}`,
+);
+
+const scam = "drainer.sandbox";
+let b = await submitReport(
+  newcomer,
+  50,
+  `scam:${scam} took a deposit for a check and never delivered https://explorer.near.org/txns/9xQ`,
+);
+see(
+  !!b.decision && "NeedsCouncil" in b.decision,
+  "a newcomer has no points, so one council member has to approve the payout",
+);
+const toAttacker = await bountyAgent.requestSpend({
+  asset: "Near",
+  amount: milli(50).toString(),
+  dest: { Near: { account: A.attacker } },
+  purpose: "bounty 0",
+  idempotency_key: "steal-bounty",
+  bounty: b.id,
+});
+see(
+  denied(toAttacker) === "BountyMismatch",
+  "a fooled bounty agent can't redirect it: a payout goes only to the claimant",
+);
+if (b.decision && "NeedsCouncil" in b.decision)
+  await council.councilApprove(b.decision.NeedsCouncil.req_id);
+see(
+  (await bountyPaid(b.id)) && (await board.record(A.newcomer)).points === 1,
+  `${A.council} approves; ${A.newcomer} is paid and earns 1 point, traceable to bounty ${b.id}`,
+);
+
+b = await submitReport(newcomer, 50, `scam:${lookalike} asks members to pay their DAO dues to it`);
+see(
+  !!b.decision && "Approved" in b.decision && (await bountyPaid(b.id)),
+  "with 1 point, the next small payout needs nobody: earned trust auto-approves it",
+);
+
+b = await submitReport(
+  steward,
+  200,
+  "scam:checks-desk.sandbox sells fake checks https://explorer.near.org/txns/4kP",
+);
+const own = b.decision && "NeedsCouncil" in b.decision ? b.decision.NeedsCouncil.req_id : -1;
+const self = await steward.councilApprove(own);
+see(!self.ok, `council member ${A.steward} claimed this one and can't approve their own payout`);
+await council.councilApprove(own);
+see(await bountyPaid(b.id), `${A.council} approves it instead`);
+
+b = await submitReport(
+  newcomer,
+  800,
+  "scam:0wner.sandbox poses as the shop's owner and asks for payment",
+);
+see(
+  !!b.decision && "NeedsCosign" in b.decision,
+  "0.8 NEAR is above what one council member may approve for 2 points: the DAO decides",
+);
+const vote =
+  b.decision && "NeedsCosign" in b.decision
+    ? await daoVotes(`pay bounty ${b.id}`, "approve_request", {
+        req_id: b.decision.NeedsCosign.req_id,
+      })
+    : undefined;
+see(!!vote?.ok && (await bountyPaid(b.id)), "the DAO votes the payout through and it pays");
+
+const list = scamListFrom(await board.recentBounties(100));
+const second = await gather(scam, { ...sources, scamList: async () => list });
+const v = verdict(second, Date.now());
+see(
+  v.level === "do not pay" && !second.lookalikeOf,
+  `the shop's check of ${scam} now says "${v.level}": ${v.reasons[0]}`,
+);
+
+section("11. Kill switch");
 await owner.freeze();
 res = await ask(
   "pay the data vendor 1 USDC",
