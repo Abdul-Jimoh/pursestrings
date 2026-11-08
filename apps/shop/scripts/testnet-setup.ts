@@ -1,7 +1,8 @@
 // Creates the testnet accounts behind /shop and /bounties, skipping any step already done:
 // publishes the contract's code hash on our factory, deploys the community DAO (the same
 // Sputnik v3.2 code as mainnet's sputnik-dao.near, left with no keys), creates the shop and
-// the bounty account from the factory, adds their agents, and has the DAO fund the bounties.
+// the bounty account from the factory, adds their agents, has the DAO fund the bounties and
+// posts the first ones.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -290,6 +291,30 @@ if (BigInt(funded?.amount ?? "0") < BigInt(N(8))) {
     Transfer: { token_id: "", receiver_id: BOUNTIES, amount: N(2), msg: null },
   });
 }
+// The first bounties, posted by a council member. Each paid one adds an address to the shop's
+// scam list and a point to the claimant's record.
+const BOUNTY_LIST: [string, number][] = [
+  ["Report an account imitating a testnet name people pay: scam:<account> <evidence>", 0.05],
+  [
+    "Report an account imitating the shop, the DAO or the bounty board: scam:<account> <evidence>",
+    0.05,
+  ],
+  ["Report a Base Sepolia address used for address poisoning: scam:<0x address> <tx link>", 0.1],
+];
+if ((await view<number>(BOUNTIES, "next_bounty_id")) === 0) {
+  const council = signer(COUNCIL[1] as string);
+  for (const [title, reward] of BOUNTY_LIST) {
+    await call(
+      council,
+      BOUNTIES,
+      "post_bounty",
+      { title, asset: "Near", reward: N(reward) },
+      1n,
+      30n,
+    );
+  }
+}
+
 const keys = await rpc<{ keys: unknown[] }>({
   request_type: "view_access_key_list",
   account_id: DAO,

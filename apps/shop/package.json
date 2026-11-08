@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts",
-    "loop": "node --experimental-strip-types --no-warnings scripts/loop.ts"
+    "loop": "node --experimental-strip-types --no-warnings scripts/loop.ts",
+    "board-loop": "node --experimental-strip-types --no-warnings scripts/board-loop.ts"
   },
   "dependencies": {
     "@pursestrings/sdk": "workspace:*",

@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, parseDecimals } from "@pursestrings/mcp";
 import { Pursestrings } from "@pursestrings/sdk";
-import { Reports, type Route, shopRoutes } from "@pursestrings/shop";
+import { boardRoutes, Reports, Reviews, type Route, shopRoutes } from "@pursestrings/shop";
 import { JsonRpcProvider } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
 import { cost, Limits } from "./limits.ts";
@@ -71,6 +71,31 @@ const KNOWN = [
 ];
 
 const routes: Route[] = [];
+const sources = {
+  nearRpc: rpc,
+  nearTx: env("NEAR_TX_API", "https://tx.test.fastnear.com"),
+  blockscout: env("BLOCKSCOUT", "https://base-sepolia.blockscout.com"),
+  known: env("SHOP_KNOWN", KNOWN.join(",")).split(","),
+};
+const boardAccount = process.env.BOARD_ACCOUNT;
+const board = boardAccount ? new Pursestrings(rpc, boardAccount) : undefined;
+const boardKey =
+  process.env.BOARD_AGENT_KEY ??
+  (process.env.BOARD_AGENT_KEY_FILE
+    ? JSON.parse(readFileSync(process.env.BOARD_AGENT_KEY_FILE, "utf8")).private_key
+    : undefined);
+if (board && boardKey) {
+  const { route, tick } = boardRoutes({
+    board,
+    agent: board.agent(boardKey),
+    model,
+    sources,
+    reviews: new Reviews(env("BOARD_DATA", join(import.meta.dirname, "../data/reviews.jsonl"))),
+  });
+  routes.push(route);
+  setInterval(() => tick().catch((e) => console.error("board:", e)), 10_000);
+}
+
 const shopAccount = process.env.SHOP_ACCOUNT;
 if (shopAccount) {
   const shop = new Pursestrings(rpc, shopAccount);
@@ -82,15 +107,8 @@ if (shopAccount) {
     agent: shop.agent(shopKey),
     model,
     reports: new Reports(env("SHOP_DATA", join(import.meta.dirname, "../data/reports.jsonl"))),
-    sources: {
-      nearRpc: rpc,
-      nearTx: env("NEAR_TX_API", "https://tx.test.fastnear.com"),
-      blockscout: env("BLOCKSCOUT", "https://base-sepolia.blockscout.com"),
-      known: env("SHOP_KNOWN", KNOWN.join(",")).split(","),
-    },
-    ...(process.env.BOARD_ACCOUNT
-      ? { board: new Pursestrings(rpc, process.env.BOARD_ACCOUNT) }
-      : {}),
+    sources,
+    ...(board ? { board } : {}),
     allow: (account) => limits.check(account),
     record: (account, usage) => limits.record(account, cost(usage, pricing)),
   });

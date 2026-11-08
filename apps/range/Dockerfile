@@ -12,6 +12,6 @@ COPY packages/sdk/src packages/sdk/src
 COPY packages/mcp/src packages/mcp/src
 COPY apps/shop/src apps/shop/src
 COPY apps/range/src apps/range/src
-ENV NODE_ENV=production RANGE_PORT=8080 RANGE_DATA=/data/attacks.jsonl SHOP_DATA=/data/reports.jsonl
+ENV NODE_ENV=production RANGE_PORT=8080 RANGE_DATA=/data/attacks.jsonl SHOP_DATA=/data/reports.jsonl BOARD_DATA=/data/reviews.jsonl
 EXPOSE 8080
 CMD ["node", "--experimental-strip-types", "--no-warnings", "apps/range/src/main.ts"]
