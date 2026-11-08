@@ -10,7 +10,7 @@ import { lockScroll } from "./SmoothScroll";
 
 const links = [
   { href: "/#how", label: "How it holds" },
-  { href: "/#verify", label: "Verify" },
+  { href: "/shop", label: "The shop" },
   { href: "/range", label: "The Range" },
   { href: "/app", label: "Dashboard" },
 ];

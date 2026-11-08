@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { gsap, reducedMotion, revealLines, useGSAP } from "@/lib/gsap";
 import { loadPolicy, type PolicyView, RANGE_ACCOUNT, RANGE_EVM } from "@/lib/policy";
 import { type Entry, type Log, range, type Status, verdict, verdictColor } from "@/lib/range";
-import { signIn } from "@/lib/wallet";
+import { loadSession, type Session, saveSession, startSession } from "@/lib/session";
 import { Block } from "../Block";
 import { Stats } from "../Stats";
 import { AttemptList } from "./Attempts";
@@ -37,22 +37,7 @@ const rules = [
   },
 ];
 
-const TOKEN_KEY = "range-session";
 const FEED = 10;
-
-function load(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function save(key: string, value: string) {
-  try {
-    sessionStorage.setItem(key, value);
-  } catch {}
-}
 
 export function RangeApp() {
   const root = useRef<HTMLDivElement>(null);
@@ -60,7 +45,7 @@ export function RangeApp() {
   const [offline, setOffline] = useState(false);
   const [policy, setPolicy] = useState<PolicyView | null>(null);
   const [log, setLog] = useState<Log>({ entries: [], hallOfFame: [], total: 0 });
-  const [session, setSession] = useState<{ token: string; account: string } | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<Entry | null>(null);
@@ -81,8 +66,7 @@ export function RangeApp() {
   }, []);
 
   useEffect(() => {
-    const saved = load(TOKEN_KEY);
-    if (saved) setSession(JSON.parse(saved));
+    setSession(loadSession());
     refresh();
     loadPolicy()
       .then(setPolicy)
@@ -112,11 +96,7 @@ export function RangeApp() {
   async function connect() {
     setError(null);
     try {
-      const n = await range.nonce();
-      const signed = await signIn(n);
-      const s = await range.session({ ...signed, nonce: n.nonce });
-      setSession(s);
-      save(TOKEN_KEY, JSON.stringify(s));
+      setSession(await startSession());
     } catch (e) {
       setError((e as Error).message);
     }
@@ -134,7 +114,10 @@ export function RangeApp() {
       refresh();
     } catch (e) {
       const msg = (e as Error).message;
-      if (msg === "sign in first") setSession(null);
+      if (msg === "sign in first") {
+        setSession(null);
+        saveSession(null);
+      }
       setError(msg);
     } finally {
       setRunning(false);

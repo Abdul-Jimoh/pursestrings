@@ -60,14 +60,24 @@ export async function disconnect() {
 const TGAS = 10n ** 12n;
 
 /** Owner methods take exactly 1 yoctoNEAR, so only a full-access key (a wallet prompt) can call them. */
-export async function ownerCall(
+export function ownerCall(
   contract: string,
   method: string,
   args: object,
   { tgas = 100n, deposit = "1" } = {},
 ) {
+  return walletCall(contract, method, args, { tgas, deposit });
+}
+
+/** Signs one function call with the connected wallet; returns the transaction hash. */
+export async function walletCall(
+  contract: string,
+  method: string,
+  args: object,
+  { tgas, deposit }: { tgas: bigint; deposit: string },
+): Promise<string | undefined> {
   const { wallet: w } = await (await wallet()).getConnectedWallet();
-  return w.signAndSendTransaction({
+  const out = await w.signAndSendTransaction({
     receiverId: contract,
     actions: [
       {
@@ -76,4 +86,5 @@ export async function ownerCall(
       },
     ],
   });
+  return (out as { transaction?: { hash?: string } } | undefined)?.transaction?.hash;
 }

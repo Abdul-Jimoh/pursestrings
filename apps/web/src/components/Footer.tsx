@@ -60,6 +60,11 @@ export function Footer() {
         <p className="eyebrow text-dim-ink">Built at NEAR Hackathon 2026 · Apache-2.0</p>
         <ul className="eyebrow flex flex-wrap gap-6">
           <li>
+            <Link href="/shop" className="hover:text-string">
+              The shop
+            </Link>
+          </li>
+          <li>
             <Link href="/range" className="hover:text-string">
               The Range
             </Link>

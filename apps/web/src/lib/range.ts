@@ -28,7 +28,7 @@ export interface Status {
   target: { account: string; explorer: string };
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+export async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${RANGE_API}${path}`, init);
   const body = (await res.json()) as T & { error?: string };
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);

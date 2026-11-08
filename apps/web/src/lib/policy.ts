@@ -4,6 +4,11 @@ export const NEAR_RPC = process.env.NEXT_PUBLIC_NEAR_RPC ?? "https://test.rpc.fa
 export const RANGE_ACCOUNT =
   process.env.NEXT_PUBLIC_RANGE_ACCOUNT ?? "range.factory.ps-spike-1028.testnet";
 export const RANGE_EVM = "0xc2C679d9E3fdB12f4Ef08f5d5d6BC2F47498b0bF";
+export const SHOP_ACCOUNT =
+  process.env.NEXT_PUBLIC_SHOP_ACCOUNT ?? "shop.factory.ps-spike-1028.testnet";
+export const BOARD_ACCOUNT =
+  process.env.NEXT_PUBLIC_BOARD_ACCOUNT ?? "bounties.factory.ps-spike-1028.testnet";
+export const DAO_ACCOUNT = process.env.NEXT_PUBLIC_DAO_ACCOUNT ?? "ps-community-1107.testnet";
 
 /** Mirrors the contract's JSON (`contracts/pursestrings/src/policy.rs`, `types.rs`). */
 export type Asset =
@@ -49,6 +54,7 @@ export interface Policy {
   floors?: { asset: Asset; min: string }[];
   split?: { account: string; bps: number }[];
   delivery_s?: number;
+  refund_limits?: { asset: Asset; window: Window }[];
 }
 
 let provider: JsonRpcProvider | undefined;
