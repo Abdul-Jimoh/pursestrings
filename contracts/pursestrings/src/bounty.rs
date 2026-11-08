@@ -344,6 +344,29 @@ mod tests {
     }
 
     #[test]
+    fn a_council_member_cannot_approve_their_own_payout() {
+        let mut c = board();
+        call_as(council());
+        let id = c.post_bounty("fix the docs".into(), usdc(), U128(15));
+        c.claim_bounty(id);
+        c.submit_bounty(id, "https://example.com/pr/1".into());
+        as_agent(1_000);
+        assert!(matches!(
+            c.request_spend(payout(id, council(), 15)),
+            Decision::NeedsCouncil { req_id: 0, .. }
+        ));
+        call_as(council());
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.council_approve(0)));
+        assert!(r.is_err(), "the claimant approved their own payout");
+        let other: AccountId = "bob.near".parse().unwrap();
+        c.policy.council.push(other.clone());
+        call_as(other);
+        c.council_approve(0);
+        c.finish_execution(0, true);
+        assert_eq!(c.bounty(id).unwrap().status, BountyStatus::Paid);
+    }
+
+    #[test]
     fn earned_points_raise_what_goes_through_alone() {
         let mut c = board();
         c.reputation.insert(

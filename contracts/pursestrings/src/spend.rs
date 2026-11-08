@@ -201,14 +201,16 @@ impl Pursestrings {
     #[payable]
     pub fn council_approve(&mut self, req_id: u64) {
         assert_one_yocto();
-        require!(
-            self.policy.council.contains(&env::predecessor_account_id()),
-            "council only"
-        );
+        let who = env::predecessor_account_id();
+        require!(self.policy.council.contains(&who), "council only");
         let req = self.requests.get(&req_id).expect("unknown request");
         require!(
             req.status == RequestStatus::PendingCouncil,
             "needs the owner, not the council"
+        );
+        require!(
+            !matches!(&req.spend.dest, Dest::Near { account } if *account == who),
+            "a council member can't approve a payout to themselves"
         );
         self.start_pending(req_id);
     }
