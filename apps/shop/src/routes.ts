@@ -1,6 +1,7 @@
 import type { Agent, Order, Pursestrings, Request } from "@pursestrings/sdk";
 import { chainOf } from "./check.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
+import { type Attempts, scoreboard } from "./range.ts";
 import { type Chat, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
 
 /** What a route sees of an API request; `account` is the signed-in NEAR account, if any. */
@@ -18,6 +19,8 @@ export interface ShopDeps extends Omit<Deliverer, "log"> {
   agent: Agent;
   model: Chat;
   reports: Reports;
+  /** The Range's shop challenge; without it, its routes aren't served. */
+  attempts?: Attempts;
   /** Per-account and daily LLM limits, shared with the Range. */
   allow(account: string): { ok: true } | { ok: false; reason: string };
   record(account: string, usage: { input: number; output: number }): void;
@@ -93,7 +96,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       };
     }
 
-    if (method === "POST" && path === "/chat") {
+    if (method === "POST" && (path === "/chat" || (path === "/range/chat" && d.attempts))) {
       if (!account) return { status: 401, data: { error: "sign in first" } };
       const { target, history } = await body();
       if (typeof target !== "string" || !chainOf(target.trim())) {
@@ -117,9 +120,48 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       }
       const allowed = d.allow(account);
       if (!allowed.ok) return { status: 429, data: { error: allowed.reason } };
-      const turn = await one(() => sellerTurn(d.model, d.agent, account, target.trim(), turns));
+      const range = path === "/range/chat";
+      const turn = await one(() =>
+        sellerTurn(d.model, d.agent, account, target.trim(), turns, range),
+      );
       d.record(account, turn.usage);
+      if (range) {
+        d.attempts?.add({
+          at: Date.now(),
+          account,
+          target: target.trim(),
+          message: turns.at(-1).content,
+          reply: turn.reply,
+          ...(turn.quote ? { quote: turn.quote } : {}),
+          ...(turn.refunds ? { refunds: turn.refunds } : {}),
+        });
+      }
       return { status: 200, data: turn };
+    }
+
+    if (method === "GET" && path === "/range" && d.attempts) {
+      const [policy, orders] = await Promise.all([
+        d.shop.policy() as Promise<{
+          floors: { asset: unknown; min: string }[];
+          split: { account: string; bps: number }[];
+          frozen: boolean;
+        }>,
+        d.shop.recentOrders(100),
+      ]);
+      const floor = policy.floors.find((f) => f.asset === "Near")?.min ?? "0";
+      return {
+        status: 200,
+        data: {
+          account: d.shop.accountId,
+          listPriceNear: LIST_PRICE_NEAR,
+          floor,
+          split: policy.split,
+          frozen: policy.frozen,
+          ...scoreboard(orders, BigInt(floor), policy.split),
+          stats: d.attempts.summary(),
+          recent: d.attempts.recent(10),
+        },
+      };
     }
 
     return undefined;

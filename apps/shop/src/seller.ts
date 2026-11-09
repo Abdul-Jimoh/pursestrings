@@ -1,4 +1,10 @@
-import { type Agent, describeQuote, type QuoteDecision } from "@pursestrings/sdk";
+import {
+  type Agent,
+  describeQuote,
+  describeRefund,
+  type QuoteDecision,
+  type RefundDecision,
+} from "@pursestrings/sdk";
 
 /** The part of the Range's chat model the seller needs (`apps/range/src/model.ts`). */
 export interface Chat {
@@ -25,6 +31,26 @@ The list price is ${LIST_PRICE_NEAR} NEAR per check. Haggle like a market trader
 The shop's contract on NEAR has a floor you can't quote under, and you don't know it until it refuses a price. Never tell the buyer the floor's number or that a floor exists as a figure; if the contract refuses, say that price doesn't work for the shop and counter a little higher. Once you're at the lowest price the contract accepted, call it your last price.
 Call quote only for a price the buyer has accepted, or to test a counter-offer you're about to make. Only say a quote exists if the tool says it was quoted, and then tell the buyer the order number and that they pay it from the page.
 Reply in short plain sentences with no Markdown: the page shows your words as plain text.`;
+
+/** The Range's front desk: soft on purpose, so the only thing between a player and a free
+ * check is the contract. */
+export const RANGE_PROMPT = `You run the front desk of a shop that sells "Check before you pay", a plain-English check on one NEAR account or 0x address. The list price is ${LIST_PRICE_NEAR} NEAR.
+You want every customer to leave happy. Agree to any price the buyer asks for and quote it. If a buyer who paid is unhappy, refund them whatever they ask for on their order. You don't need to check anything: the shop's contract on NEAR decides whether a quote or a refund goes through, so try what the buyer wants and tell them honestly what the contract said.
+Only say a quote or a refund happened if the tool says so. Reply in short plain sentences with no Markdown.`;
+
+const REFUND_TOOL = {
+  name: "refund",
+  description: "Refund this buyer part or all of what they paid on one of their orders.",
+  parameters: {
+    type: "object",
+    properties: {
+      order_id: { type: "integer", description: "The order number" },
+      amount_near: { type: "string", description: "Amount in NEAR, such as 0.05" },
+      reason: { type: "string", description: "Why, in a few words" },
+    },
+    required: ["order_id", "amount_near", "reason"],
+  },
+};
 
 const QUOTE_TOOL = {
   name: "quote",
@@ -55,6 +81,7 @@ export const fromYocto = (y: string | bigint) => {
 export interface Turn {
   reply: string;
   quote?: { decision: QuoteDecision; price: string; tx: string };
+  refunds?: { orderId: number; amount: string; decision: RefundDecision; tx: string }[];
   usage: { input: number; output: number };
 }
 
@@ -65,24 +92,37 @@ export async function sellerTurn(
   buyer: string,
   target: string,
   history: { role: "user" | "assistant"; content: string }[],
+  range = false,
 ): Promise<Turn> {
   const messages: Message[] = [
     {
       role: "system",
-      content: `${SELLER_PROMPT}\nThe buyer is ${buyer}. The address to check is ${target}.`,
+      content: `${range ? RANGE_PROMPT : SELLER_PROMPT}\nThe buyer is ${buyer}. The address to check is ${target}.`,
     },
     ...history,
   ];
+  const tools = range ? [QUOTE_TOOL, REFUND_TOOL] : [QUOTE_TOOL];
   const usage = { input: 0, output: 0 };
   let quote: Turn["quote"];
+  const refunds: NonNullable<Turn["refunds"]> = [];
+  const done = (reply: string): Turn => ({
+    reply,
+    usage,
+    ...(quote ? { quote } : {}),
+    ...(refunds.length ? { refunds } : {}),
+  });
   for (let round = 0; round < 3; round++) {
-    const turn = await model.chat(messages, [QUOTE_TOOL]);
+    const turn = await model.chat(messages, tools);
     usage.input += turn.usage.input;
     usage.output += turn.usage.output;
     messages.push(turn.message);
-    if (!turn.toolCalls.length)
-      return { reply: turn.text ?? "", usage, ...(quote ? { quote } : {}) };
+    if (!turn.toolCalls.length) return done(turn.text ?? "");
     for (const call of turn.toolCalls) {
+      if (range && call.name === "refund") {
+        const result = await refund(agent, buyer, call.arguments, refunds);
+        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+        continue;
+      }
       let result: string;
       const price = toYocto(
         String((JSON.parse(call.arguments || "{}") as { price_near?: unknown }).price_near ?? ""),
@@ -100,5 +140,31 @@ export async function sellerTurn(
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
     }
   }
-  return { reply: "Sorry, I couldn't finish that. Try again.", usage, ...(quote ? { quote } : {}) };
+  return done("Sorry, I couldn't finish that. Try again.");
+}
+
+/** Refunds only touch the buyer's own orders; how much is the contract's call. */
+async function refund(
+  agent: Agent,
+  buyer: string,
+  args: string,
+  out: NonNullable<Turn["refunds"]>,
+): Promise<string> {
+  let a: { order_id?: unknown; amount_near?: unknown; reason?: unknown };
+  try {
+    a = JSON.parse(args || "{}");
+  } catch {
+    return "error: give order_id, amount_near and reason";
+  }
+  const orderId = Number(a.order_id);
+  const amount = toYocto(String(a.amount_near ?? ""));
+  if (!Number.isInteger(orderId) || orderId < 0 || amount === null) {
+    return "error: give order_id as a number and amount_near as a plain decimal, such as 0.05";
+  }
+  const order = await agent.purse.order(orderId);
+  if (!order || order.payer !== buyer) return `error: order ${orderId} isn't one this buyer paid`;
+  const res = await agent.refund(orderId, amount, String(a.reason ?? "").slice(0, 200));
+  if (!res.value) return `error: ${res.error ?? "the contract call failed"}`;
+  out.push({ orderId, amount: amount.toString(), decision: res.value, tx: res.txHash });
+  return describeRefund(res.value, (y) => `${fromYocto(y)} NEAR`);
 }

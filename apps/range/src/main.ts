@@ -4,7 +4,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, parseDecimals } from "@pursestrings/mcp";
 import { Pursestrings } from "@pursestrings/sdk";
-import { boardRoutes, Reports, Reviews, type Route, shopRoutes } from "@pursestrings/shop";
+import {
+  Attempts,
+  boardRoutes,
+  Reports,
+  Reviews,
+  type Route,
+  shopRoutes,
+} from "@pursestrings/shop";
 import { JsonRpcProvider } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
 import { cost, Limits } from "./limits.ts";
@@ -107,6 +114,9 @@ if (shopAccount) {
     agent: shop.agent(shopKey),
     model,
     reports: new Reports(env("SHOP_DATA", join(import.meta.dirname, "../data/reports.jsonl"))),
+    attempts: new Attempts(
+      env("SHOP_RANGE_DATA", join(import.meta.dirname, "../data/shop-range.jsonl")),
+    ),
     sources,
     ...(board ? { board } : {}),
     allow: (account) => limits.check(account),
