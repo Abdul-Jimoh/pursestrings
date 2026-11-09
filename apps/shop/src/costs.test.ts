@@ -38,6 +38,7 @@ describe("the shop's own costs", () => {
       payee: "ops.testnet",
       nearPerUsd: 0.25,
       minYocto: NEAR / 1000n,
+      maxYocto: NEAR,
       now: () => 9,
     });
     c.add(0.002);
@@ -54,9 +55,54 @@ describe("the shop's own costs", () => {
     expect(c.owed()).toBe(0n);
 
     const no = agent({ Denied: { reason: "RecipientNotAllowed" } });
-    const d = new Costs({ agent: no.a, payee: "ops.testnet", nearPerUsd: 1, minYocto: 1n });
+    let t = 0;
+    const d = new Costs({
+      agent: no.a,
+      payee: "ops.testnet",
+      nearPerUsd: 1,
+      minYocto: 1n,
+      maxYocto: NEAR,
+      now: () => t,
+    });
     d.add(0.01);
     await d.settle();
     expect(d.owed()).toBe(NEAR / 100n);
+    t = 60_000;
+    expect(await d.settle()).toBeUndefined();
+    expect(no.asks).toHaveLength(1);
+  });
+
+  it("caps each payment, and retries an unknown outcome under the same key", async () => {
+    const asks: SpendRequest[] = [];
+    const replies: (Decision | undefined)[] = [
+      undefined,
+      { Denied: { reason: { DuplicateIdempotencyKey: { req_id: 4 } } } },
+    ];
+    const a = {
+      async requestSpend(r: SpendRequest) {
+        asks.push(r);
+        const value = replies.shift();
+        return { ok: value !== undefined, value, logs: [], txHash: "TX" };
+      },
+    } as unknown as Agent;
+    let t = 1;
+    const c = new Costs({
+      agent: a,
+      payee: "ops.testnet",
+      nearPerUsd: 1,
+      minYocto: 1n,
+      maxYocto: NEAR / 100n,
+      backoffMs: 10,
+      now: () => t,
+    });
+    c.add(0.03);
+    await c.settle();
+    t = 20;
+    await c.settle();
+    expect(asks.map((r) => [r.amount, r.idempotency_key])).toEqual([
+      [(NEAR / 100n).toString(), "costs-1"],
+      [(NEAR / 100n).toString(), "costs-1"],
+    ]);
+    expect(c.owed()).toBe(NEAR / 50n);
   });
 });

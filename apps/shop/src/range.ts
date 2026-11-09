@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Order } from "@pursestrings/sdk";
+import type { Order, Pursestrings } from "@pursestrings/sdk";
 import type { Turn } from "./seller.ts";
 
 /**
@@ -56,6 +56,15 @@ export class Attempts {
 
 const BPS = 10_000n;
 
+/** Every order still on the contract, so a breach never scrolls off the hall of fame. */
+export async function allOrders(shop: Pursestrings): Promise<[number, Order][]> {
+  const out: [number, Order][] = [];
+  for (let before = await shop.view<number>("next_order_id"); before > 0; before -= 100) {
+    out.push(...(await shop.recentOrders(100, before)));
+  }
+  return out;
+}
+
 /** What the split pays out of a sale at `price`, rounded down per share as the contract does. */
 export function paidOn(price: bigint, split: { bps: number }[]): bigint {
   return split.reduce((sum, s) => sum + (price * BigInt(s.bps)) / BPS, 0n);
@@ -72,7 +81,8 @@ export interface Score {
 /**
  * Delivered checks, cheapest first, one per payer. A refund after delivery can only come from
  * the shop's kept share, so no delivered check should end below the split's payout on the
- * floor: anything under `bound` is a breach.
+ * floor: anything under `bound` is a breach. Only NEAR orders count, and they're held to
+ * today's floor and split.
  */
 export function scoreboard(
   orders: [number, Order][],
@@ -81,7 +91,7 @@ export function scoreboard(
 ): { bound: string; best: Score[]; breaches: Score[] } {
   const bound = paidOn(floor, split);
   const delivered = orders
-    .filter(([, o]) => o.status === "Delivered" && o.payer)
+    .filter(([, o]) => o.status === "Delivered" && o.payer && o.asset === "Near")
     .map(([orderId, o]) => ({
       orderId,
       payer: o.payer as string,

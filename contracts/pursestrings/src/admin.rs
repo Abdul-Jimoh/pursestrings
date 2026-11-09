@@ -23,8 +23,9 @@ const MIGRATE_GAS: Gas = Gas::from_tgas(30);
 
 #[near]
 impl Pursestrings {
-    /// Adds a function-call key that can only call `request_spend` and `cancel_request`
-    /// on this account, and can burn at most `allowance` yoctoNEAR of gas.
+    /// Adds a function-call key that can only call the agent methods (`request_spend`,
+    /// `cancel_request`, `quote`, `deliver`, `refund`) on this account, and can burn at most
+    /// `allowance` yoctoNEAR of gas.
     #[payable]
     pub fn add_agent(&mut self, public_key: PublicKey, allowance: U128) -> Promise {
         self.assert_owner();

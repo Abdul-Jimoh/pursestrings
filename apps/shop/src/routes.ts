@@ -2,7 +2,7 @@ import type { Agent, Order, Pursestrings, Request } from "@pursestrings/sdk";
 import { chainOf } from "./check.ts";
 import type { Costs } from "./costs.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
-import { type Attempts, scoreboard } from "./range.ts";
+import { type Attempts, allOrders, scoreboard } from "./range.ts";
 import { type Chat, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
 
 /** What a route sees of an API request; `account` is the signed-in NEAR account, if any. */
@@ -156,7 +156,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
           split: { account: string; bps: number }[];
           frozen: boolean;
         }>,
-        d.shop.recentOrders(100),
+        allOrders(d.shop),
       ]);
       const floor = policy.floors.find((f) => f.asset === "Near")?.min ?? "0";
       return {

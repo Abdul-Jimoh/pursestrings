@@ -29,8 +29,9 @@ only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
 ([lib.rs:313](contracts/pursestrings/src/lib.rs#L313)). The one selling method that pays anything out, `refund`, can only
-pay whoever paid that order, only from the part of the price the account kept, and only within
-the owner's refund window ([sales.rs](contracts/pursestrings/src/sales.rs)).
+pay whoever paid that order, only within the owner's refund window, and only as all of the
+payment before delivery or from the part of the price the account kept after it
+([sales.rs](contracts/pursestrings/src/sales.rs)).
 
 Test: [`inv1_agent_key_cannot_move_funds`](contracts/pursestrings/tests/invariants.rs#L37) checks
 the key's receiver, methods and allowance on-chain. It then has the agent try a raw transfer,

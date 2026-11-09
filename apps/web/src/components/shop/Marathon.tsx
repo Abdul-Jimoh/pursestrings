@@ -12,6 +12,7 @@ interface Summary {
   attempts: number;
   refused: number;
   events: number;
+  inconclusive?: number;
   kinds: {
     kind: string;
     attempts: number;
@@ -66,6 +67,9 @@ export function Marathon() {
           on testnet ({day(s.from)}–{day(s.to)}): as a fooled agent with a real key, and as an
           outsider. {s.refused.toLocaleString()} were refused, {s.events.toLocaleString()} of them
           as decisions the contract logged on-chain.
+          {s.inconclusive
+            ? ` ${s.inconclusive} failed for some other reason, such as a network error, and aren't counted as refused.`
+            : ""}
         </p>
       </header>
 

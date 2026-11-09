@@ -119,6 +119,8 @@ if (shopAccount) {
         payee: costsTo,
         nearPerUsd: Number(env("SHOP_NEAR_PER_USD", "0.27")),
         minYocto: 10n ** 21n,
+        // Under the shop's co-sign threshold, so a payment never waits on the owner.
+        maxYocto: 10n ** 23n,
       })
     : undefined;
   const { route, tick } = shopRoutes({

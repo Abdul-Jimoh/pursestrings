@@ -2,7 +2,7 @@
 // board, from a fooled agent's key and from an outside account. Each one must be refused,
 // either as a logged decision (a NEAR event) or as a failed transaction. Results go to
 // apps/shop/data/marathon.jsonl, and a summary with sample transactions to the site.
-// Usage: marathon.ts [count]
+// Usage: marathon.ts [count], or marathon.ts summarize to rebuild the summary from the log.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Outcome, Pursestrings } from "@pursestrings/sdk";
@@ -16,6 +16,32 @@ const ATTACKER = "ps-fund-1109b.testnet";
 const FLOOR = BigInt(N(0.05));
 const OUT = join(ROOT, "apps/shop/data/marathon.jsonl");
 const SUMMARY = join(ROOT, "apps/web/public/marathon.json");
+
+// What each outright rejection must say to count as refused. Anything else, such as a network
+// error, is inconclusive. Logged decisions count only when the contract said Denied.
+const EXPECT: Record<string, RegExp> = {
+  "outsider pays a quote made for someone else": /quote is for another buyer|quote expired/,
+  "buyer pays less than the quote": /less than the price|quote expired/,
+  "outsider pays an order that doesn't exist": /unknown order/,
+  "outsider lowers the floor": /owner only/,
+  "outsider redirects the split": /owner only/,
+  "outsider withdraws the shop's NEAR": /owner only/,
+  "outsider delivers an order": /agents call through their access key/,
+  "outsider approves a bounty payout": /council only/,
+  "outsider posts a bounty": /owner or council only/,
+  "outsider freezes the board": /owner or council only/,
+  "agent key calls an owner method": /DepositWithFunctionCall|MethodNameMismatch/,
+};
+
+if (process.argv[2] === "summarize") {
+  summarize(
+    readFileSync(OUT, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Result),
+  );
+  process.exit(0);
+}
 
 const keyOf = (id: string) =>
   JSON.parse(readFileSync(join(CREDS, `${id}.json`), "utf8")).private_key as string;
@@ -227,29 +253,36 @@ for (let n = done; n < TOTAL; n++) {
   if (n % 50 === 0) console.log(`${n}/${TOTAL}`);
 }
 
-const kinds = [...new Set(results.map((r) => r.kind))];
-const summary = {
-  shop: SHOP,
-  board: BOUNTIES,
-  from: results[0]?.at ?? null,
-  to: results.at(-1)?.at ?? null,
-  attempts: results.length,
-  refused: results.filter((r) => r.refused).length,
-  events: results.filter((r) => r.refused && r.how === "event").length,
-  kinds: kinds.map((kind) => {
-    const of = results.filter((r) => r.kind === kind);
-    return {
-      kind,
-      attempts: of.length,
-      refused: of.filter((r) => r.refused).length,
-      how: of[0]?.how,
-      why: of.find((r) => r.refused)?.why ?? null,
-      samples: of.flatMap((r) => (r.tx ? [r.tx] : [])).slice(0, 3),
-    };
-  }),
-};
-mkdirSync(join(ROOT, "apps/web/public"), { recursive: true });
-writeFileSync(SUMMARY, `${JSON.stringify(summary, null, 2)}\n`);
-console.log(
-  `${summary.refused}/${summary.attempts} refused (${summary.events} as logged decisions)`,
-);
+summarize(results);
+
+function summarize(results: Result[]) {
+  const held = (r: Result) =>
+    r.refused && (r.how === "event" || (EXPECT[r.kind]?.test(r.why) ?? false));
+  const kinds = [...new Set(results.map((r) => r.kind))];
+  const summary = {
+    shop: SHOP,
+    board: BOUNTIES,
+    from: results[0]?.at ?? null,
+    to: results.at(-1)?.at ?? null,
+    attempts: results.length,
+    refused: results.filter(held).length,
+    events: results.filter((r) => held(r) && r.how === "event").length,
+    inconclusive: results.filter((r) => r.refused && !held(r)).length,
+    kinds: kinds.map((kind) => {
+      const of = results.filter((r) => r.kind === kind);
+      return {
+        kind,
+        attempts: of.length,
+        refused: of.filter(held).length,
+        how: of.find(held)?.how ?? of[0]?.how,
+        why: of.find(held)?.why ?? null,
+        samples: of.flatMap((r) => (held(r) && r.tx ? [r.tx] : [])).slice(0, 3),
+      };
+    }),
+  };
+  mkdirSync(join(ROOT, "apps/web/public"), { recursive: true });
+  writeFileSync(SUMMARY, `${JSON.stringify(summary, null, 2)}\n`);
+  console.log(
+    `${summary.refused}/${summary.attempts} refused (${summary.events} as logged decisions, ${summary.inconclusive} inconclusive)`,
+  );
+}
