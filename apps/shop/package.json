@@ -11,7 +11,8 @@
     "testnet-setup": "node --experimental-strip-types --no-warnings scripts/testnet-setup.ts",
     "loop": "node --experimental-strip-types --no-warnings scripts/loop.ts",
     "board-loop": "node --experimental-strip-types --no-warnings scripts/board-loop.ts",
-    "upgrade": "node --experimental-strip-types --no-warnings scripts/upgrade.ts"
+    "upgrade": "node --experimental-strip-types --no-warnings scripts/upgrade.ts",
+    "marathon": "node --experimental-strip-types --no-warnings scripts/marathon.ts"
   },
   "dependencies": {
     "@pursestrings/sdk": "workspace:*",
