@@ -1,0 +1,92 @@
+// Upgrades a factory account to target/near/pursestrings/pursestrings.wasm the way its owner has
+// to: the factory admin publishes the code hash, the owner (a wallet, or the DAO by a vote)
+// proposes the Migrate, it waits out the account's timelock, then the code is delivered.
+// Rerun after the timelock to finish. Usage: upgrade.ts <account> [version]
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  ADMIN,
+  base58,
+  borshBytes,
+  COUNCIL,
+  call,
+  codeHashOf,
+  DAO,
+  daoDo,
+  FACTORY,
+  ROOT,
+  signer,
+  TGAS,
+  view,
+} from "./testnet.ts";
+
+const ACCOUNT = process.argv[2];
+if (!ACCOUNT) throw new Error("usage: upgrade.ts <account> [version]");
+const VERSION = process.argv[3] ?? "0.2.0-dev.3";
+
+type Proposal = { ops: { Migrate?: { code_hash: string } }[]; eta: number };
+
+const code = readFileSync(join(ROOT, "target/near/pursestrings/pursestrings.wasm"));
+const hash = base58(createHash("sha256").update(code).digest());
+console.log(`contract ${code.length} bytes, code hash ${hash}`);
+if ((await codeHashOf(ACCOUNT)) === hash) {
+  console.log(`${ACCOUNT} already runs it`);
+  process.exit(0);
+}
+if (!(await view<boolean>(FACTORY, "is_published", { code_hash: hash }))) {
+  await call(signer(ADMIN), FACTORY, "publish", { code_hash: hash, version: VERSION }, 1n);
+}
+const owner = await view<string>(ACCOUNT, "owner");
+
+const queued = async () =>
+  (await view<[number, Proposal][]>(ACCOUNT, "proposals")).find(
+    ([, p]) => p.ops.length === 1 && p.ops[0]?.Migrate?.code_hash === hash,
+  );
+let migration = await queued();
+if (!migration) {
+  const args = { ops: [{ Migrate: { code_hash: hash } }] };
+  if (owner === DAO) {
+    await daoDo(`Upgrade ${ACCOUNT} to ${hash}`, {
+      FunctionCall: {
+        receiver_id: ACCOUNT,
+        actions: [
+          {
+            method_name: "propose",
+            args: Buffer.from(JSON.stringify(args)).toString("base64"),
+            deposit: "1",
+            gas: (100n * TGAS).toString(),
+          },
+        ],
+      },
+    });
+  } else {
+    await call(signer(owner), ACCOUNT, "propose", args, 1n);
+  }
+  migration = await queued();
+  if (!migration) throw new Error("the owner's proposal didn't queue a migration");
+}
+const [id, { eta }] = migration;
+const wait = eta - Math.floor(Date.now() / 1000);
+if (wait > 0) {
+  console.log(`migration ${id} is timelocked for ${Math.ceil(wait / 60)} more min; rerun then`);
+  process.exit(0);
+}
+
+const idBytes = Buffer.alloc(8);
+idBytes.writeBigUInt64LE(BigInt(id));
+const args = Buffer.concat([idBytes, borshBytes(code)]);
+// Code from before c971ec6 takes the migration from its owner only. A DAO owner can't send it:
+// a vote that carries the wasm leaves too little of the 300 Tgas for the call (build log, Nov 8).
+const from = owner === DAO ? (COUNCIL[1] as string) : owner;
+try {
+  await call(signer(from), ACCOUNT, "apply_migration", args, 1n, 300n);
+} catch (e) {
+  if (owner === DAO && String(e).includes("owner only")) {
+    throw new Error(`${ACCOUNT} runs code that takes a migration from its owner only, a DAO here`);
+  }
+  throw e;
+}
+const now = await codeHashOf(ACCOUNT);
+console.log(`${ACCOUNT} code hash: ${now}`);
+if (now !== hash) throw new Error("the migration didn't land");
