@@ -15,6 +15,7 @@ primary_region = "iad"
   RANGE_PER_HOUR = "5"
   SHOP_ACCOUNT = "shop.factory.ps-spike-1028.testnet"
   BOARD_ACCOUNT = "bounties.factory.ps-spike-1028.testnet"
+  SHOP_COSTS_TO = "ps-spike-1028.testnet"
 
 # The attack log is an append-only file, so it lives on a volume.
 [[mounts]]
