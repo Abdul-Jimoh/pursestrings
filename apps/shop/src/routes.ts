@@ -1,5 +1,6 @@
 import type { Agent, Order, Pursestrings, Request } from "@pursestrings/sdk";
 import { chainOf } from "./check.ts";
+import type { Costs } from "./costs.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
 import { type Attempts, scoreboard } from "./range.ts";
 import { type Chat, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
@@ -19,6 +20,8 @@ export interface ShopDeps extends Omit<Deliverer, "log"> {
   agent: Agent;
   model: Chat;
   reports: Reports;
+  /** Pays the shop's model costs from its earnings; without it, nobody is paid back. */
+  costs?: Costs;
   /** The Range's shop challenge; without it, its routes aren't served. */
   attempts?: Attempts;
   /** Per-account and daily LLM limits, shared with the Range. */
@@ -41,7 +44,14 @@ function serial() {
 
 export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<number[]> } {
   const one = serial();
-  const tick = () => one(() => deliverPaid(d));
+  const tick = () =>
+    one(async () => {
+      const delivered = await deliverPaid(d);
+      const paid = await d.costs?.settle().catch(() => undefined);
+      if (paid)
+        console.log(`costs: ${paid.amount} yocto → ${JSON.stringify(paid.decision)} (${paid.tx})`);
+      return delivered;
+    });
 
   const route: Route = async ({ method, url, account, body }) => {
     if (!url.pathname.startsWith("/api/shop/")) return undefined;

@@ -7,6 +7,8 @@ import { Pursestrings } from "@pursestrings/sdk";
 import {
   Attempts,
   boardRoutes,
+  Costs,
+  metered,
   Reports,
   Reviews,
   type Route,
@@ -109,10 +111,21 @@ if (shopAccount) {
   const shopKey =
     process.env.SHOP_AGENT_KEY ??
     JSON.parse(readFileSync(need("SHOP_AGENT_KEY_FILE"), "utf8")).private_key;
+  const shopAgent = shop.agent(shopKey);
+  const costsTo = process.env.SHOP_COSTS_TO;
+  const costs = costsTo
+    ? new Costs({
+        agent: shopAgent,
+        payee: costsTo,
+        nearPerUsd: Number(env("SHOP_NEAR_PER_USD", "0.27")),
+        minYocto: 10n ** 21n,
+      })
+    : undefined;
   const { route, tick } = shopRoutes({
     shop,
-    agent: shop.agent(shopKey),
-    model,
+    agent: shopAgent,
+    model: costs ? metered(model, (u) => costs.add(cost(u, pricing))) : model,
+    ...(costs ? { costs } : {}),
     reports: new Reports(env("SHOP_DATA", join(import.meta.dirname, "../data/reports.jsonl"))),
     attempts: new Attempts(
       env("SHOP_RANGE_DATA", join(import.meta.dirname, "../data/shop-range.jsonl")),
