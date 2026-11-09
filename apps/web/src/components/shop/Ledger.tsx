@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { DAO_ACCOUNT, fetchPolicy, type Policy, SHOP_ACCOUNT } from "@/lib/policy";
 import { type Cost, type LedgerOrder, levelColor, near, shop, target } from "@/lib/shop";
 import { Stats } from "../Stats";
+import { Marathon } from "./Marathon";
 
 const when = (s: number) =>
   new Date(s * 1000).toLocaleString([], {
@@ -181,6 +182,8 @@ export function Ledger() {
           </>
         )}
       </section>
+
+      <Marathon />
 
       <section className="mt-20 md:mt-28">
         <SectionHead

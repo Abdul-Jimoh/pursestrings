@@ -15,7 +15,7 @@ const BUYER = "ps-fund-1109a.testnet";
 const ATTACKER = "ps-fund-1109b.testnet";
 const FLOOR = BigInt(N(0.05));
 const OUT = join(ROOT, "apps/shop/data/marathon.jsonl");
-const SUMMARY = join(ROOT, "apps/web/src/data/marathon.json");
+const SUMMARY = join(ROOT, "apps/web/public/marathon.json");
 
 const keyOf = (id: string) =>
   JSON.parse(readFileSync(join(CREDS, `${id}.json`), "utf8")).private_key as string;
@@ -248,7 +248,7 @@ const summary = {
     };
   }),
 };
-mkdirSync(join(ROOT, "apps/web/src/data"), { recursive: true });
+mkdirSync(join(ROOT, "apps/web/public"), { recursive: true });
 writeFileSync(SUMMARY, `${JSON.stringify(summary, null, 2)}\n`);
 console.log(
   `${summary.refused}/${summary.attempts} refused (${summary.events} as logged decisions)`,
