@@ -12,7 +12,7 @@ version, deploy the real contracts and drive them through signed transactions.
 
 | Actor | Holds | Can | Can't |
 |---|---|---|---|
-| Agent | A function-call key on the Pursestrings account, limited to `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`, with a capped gas allowance | Ask for a payment; cancel its own pending request; quote a price at or above the owner's floor; record a delivery; refund a buyer from the kept share within the refund window | Attach a deposit, call any other method, sign anything, change the policy, quote under the floor, change where sales go |
+| Agent | A function-call key on the Pursestrings account, limited to `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`, with a capped gas allowance | Ask for a payment; cancel its own pending request; quote a price at or above the owner's floor; record a delivery; refund a buyer in full before delivery, or from the kept share after it, within the refund window | Attach a deposit, call any other method, sign anything, change the policy, quote under the floor, change where sales go |
 | Owner | Their own NEAR account (a wallet) | Approve co-signs, tighten the policy instantly, propose loosening, freeze, revoke agents, withdraw to itself | Loosen anything before the timelock ends; change the code to a hash the factory didn't publish |
 | Council member | Their own NEAR account | Approve bounty payouts their tier allows, post bounties, freeze | Approve payouts above the council tier, unfreeze, change the policy |
 | Buyer or contributor | A NEAR account | Pay a quote (a wrong payment comes back in full); claim and submit a bounty | Get paid for a bounty they didn't claim, or more than its reward |

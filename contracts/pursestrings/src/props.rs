@@ -7,11 +7,13 @@ use near_sdk::{AccountId, NearToken, testing_env};
 use proptest::prelude::*;
 
 use crate::policy::tests::{base_policy, usdc};
-use crate::policy::{BPS, Policy, Share, Velocity, WindowLimit};
+use crate::policy::{BPS, Policy, PriceFloor, RefundLimit, Share, Velocity, WindowLimit};
 use crate::ring::BUCKETS;
-use crate::sales::{share_of, split};
+use crate::sales::{OrderStatus, QuoteDecision, share_of, split};
 use crate::spend::tests::{agent_pk, contract, purse};
 use crate::types::{Decision, Dest, Recipient, RequestStatus, SpendRequest};
+
+const FLOOR: u128 = 2_000_000;
 
 fn cases() -> u32 {
     std::env::var("PROPTEST_CASES")
@@ -237,4 +239,101 @@ proptest! {
             prop_assert!(kept >= floor && kept - floor <= shares.len() as u128, "rounding dust only");
         }
     }
+
+    /// However the agent is talked into quoting, refunding and delivering, a delivered order
+    /// was quoted at or above the floor and keeps at least the split's shares of that price.
+    #[test]
+    fn a_delivered_order_never_costs_less_than_the_floor_allows(
+        steps in prop::collection::vec(sale_step(), 1..40),
+        refund_limit in 1u128..20_000_000,
+    ) {
+        near_sdk::mock::with_mocked_blockchain(|b| drop(b.take_storage()));
+        let mut p = base_policy();
+        p.floors.push(PriceFloor { asset: usdc(), min: U128(FLOOR) });
+        p.split = vec![
+            Share { account: "owner.near".parse().unwrap(), bps: 7_000 },
+            Share { account: "dao.near".parse().unwrap(), bps: 2_000 },
+        ];
+        p.refund_limits.push(RefundLimit {
+            asset: usdc(),
+            window: WindowLimit { period_s: 86_400, limit: U128(refund_limit) },
+        });
+        let mut c = contract(p.clone());
+        let (vm, fees) = (near_sdk::test_vm_config(), near_sdk::RuntimeFeesConfig::test());
+        let at = |who: &str, now: u64| testing_env!(context(who, now), vm.clone(), fees.clone());
+        let mut orders: Vec<u64> = Vec::new();
+        let now = 1_000;
+        for s in steps {
+            let pick = |i: usize| (!orders.is_empty()).then(|| orders[i % orders.len()]);
+            match s {
+                Sale::Quote(price) => {
+                    at("purse.near", now);
+                    let q = c.quote(Some("buyer.near".parse().unwrap()), usdc(), U128(price), "check".into());
+                    if let QuoteDecision::Quoted { order_id, .. } = q {
+                        prop_assert!(price >= FLOOR, "quoted {price} under the floor");
+                        orders.push(order_id);
+                    }
+                }
+                Sale::Pay(i, exact, amount) => {
+                    let Some(id) = pick(i) else { continue };
+                    let price = c.order(id).map_or(amount, |o| o.price.0);
+                    at("usdc.test.near", now);
+                    let _ = c.ft_on_transfer(
+                        "buyer.near".parse().unwrap(),
+                        U128(if exact { price } else { amount }),
+                        id.to_string(),
+                    );
+                }
+                Sale::Refund(i, amount) => {
+                    let Some(id) = pick(i) else { continue };
+                    at("purse.near", now);
+                    let _ = c.refund(id, U128(amount), "the buyer asked".into());
+                }
+                Sale::Deliver(i) => {
+                    let Some(id) = pick(i) else { continue };
+                    if c.order(id).is_none_or(|o| o.status != OrderStatus::Paid) {
+                        continue;
+                    }
+                    at("purse.near", now);
+                    let price = c.order(id).unwrap().price.0;
+                    prop_assert_eq!(c.order(id).unwrap().held.0, price, "delivering less than was paid");
+                    c.deliver(id, "sha256:x".into());
+                }
+            }
+        }
+        for id in orders {
+            let Some(o) = c.order(id) else { continue };
+            if o.status != OrderStatus::Delivered {
+                continue;
+            }
+            let (shares, _) = split(&p, o.price.0);
+            let paid_on: u128 = shares.iter().map(|(_, a)| a).sum();
+            prop_assert!(o.price.0 >= FLOOR);
+            prop_assert!(
+                o.price.0 - o.refunded.0 >= paid_on,
+                "order {id}: {} paid, {} refunded, {paid_on} went to the split",
+                o.price.0,
+                o.refunded.0
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Sale {
+    Quote(u128),
+    Pay(usize, bool, u128),
+    Refund(usize, u128),
+    Deliver(usize),
+}
+
+fn sale_step() -> impl Strategy<Value = Sale> {
+    prop_oneof![
+        2 => prop_oneof![1u128..FLOOR, FLOOR..3 * FLOOR].prop_map(Sale::Quote),
+        2 => (any::<usize>(), proptest::bool::weighted(0.8), 1u128..3 * FLOOR)
+            .prop_map(|(i, exact, a)| Sale::Pay(i, exact, a)),
+        2 => (any::<usize>(), prop_oneof![1u128..1_000_000, 1u128..3 * FLOOR])
+            .prop_map(|(i, a)| Sale::Refund(i, a)),
+        1 => any::<usize>().prop_map(Sale::Deliver),
+    ]
 }

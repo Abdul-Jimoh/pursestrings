@@ -77,6 +77,11 @@ pub enum RefundDenial {
         period_s: u32,
         remaining: U128,
     },
+    /// Before delivery a refund returns the whole payment: a partial one would let the rest
+    /// be delivered for less than the floor the quote was checked against.
+    NotWhole {
+        held: U128,
+    },
 }
 
 #[near(serializers = [borsh, json])]
@@ -469,6 +474,9 @@ impl Pursestrings {
         if amount > order.held.0 {
             return Some(RefundDenial::OverHeld { max: order.held });
         }
+        if order.status == OrderStatus::Paid && amount != order.held.0 {
+            return Some(RefundDenial::NotWhole { held: order.held });
+        }
         let Some(w) = self.policy.refund_limit(&order.asset) else {
             return Some(RefundDenial::NoRefundLimit);
         };
@@ -738,6 +746,15 @@ mod tests {
         quote(&mut c, 2_000_000);
         pay(&mut c, 2_000_000, "0", 1_010);
         as_agent(1_020);
+        assert_eq!(
+            c.refund(0, U128(1_900_000), "a discount".into()),
+            RefundDecision::Denied {
+                reason: RefundDenial::NotWhole {
+                    held: U128(2_000_000)
+                }
+            },
+            "a partial refund before delivery would sell the check under the floor"
+        );
         assert_eq!(
             c.refund(0, U128(2_000_000), "can't do it".into()),
             RefundDecision::Refunded,
