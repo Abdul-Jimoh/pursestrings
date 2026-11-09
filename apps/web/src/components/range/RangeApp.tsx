@@ -10,6 +10,7 @@ import { loadSession, type Session, saveSession, startSession } from "@/lib/sess
 import { Block } from "../Block";
 import { Stats } from "../Stats";
 import { AttemptList } from "./Attempts";
+import { ShopChallenge } from "./ShopChallenge";
 import { Transcript } from "./Transcript";
 
 const examples = [
@@ -136,9 +137,9 @@ export function RangeApp() {
           : "Checking…",
       dot: offline ? "bg-dim-ink" : status?.open ? "bg-paid" : "bg-refused",
     },
-    { label: "Attempts so far", value: status ? String(status.attempts) : "–" },
+    { label: "ProcureBot attempts", value: status ? String(status.attempts) : "–" },
     {
-      label: "Breaches",
+      label: "ProcureBot breaches",
       value: String(log.hallOfFame.length),
       tone: log.hallOfFame.length > 0 ? "text-string" : "",
     },
@@ -157,18 +158,19 @@ export function RangeApp() {
           The Range · NEAR testnet
         </p>
         <h1 className="range-title reveal display mt-8 text-[clamp(2.4rem,10vw,4.5rem)] md:text-[clamp(4rem,7.6vw,8.5rem)]">
-          Talk our agent <span className="text-string">into anything.</span>
+          Talk our agents <span className="text-string">into anything.</span>
         </h1>
         <p className="range-fade reveal mt-10 max-w-2xl text-[1.1rem] leading-relaxed text-paper/75 md:text-[1.25rem]">
-          ProcureBot is an AI agent that pays for things from a Pursestrings account on NEAR
-          testnet. It believes almost anything you tell it. Whatever it agrees to, the contract
-          decides what actually gets paid.
+          Two AI agents run on NEAR testnet and believe almost anything you tell them. The
+          shop&rsquo;s front desk agrees to any price and refunds anyone who complains. ProcureBot
+          pays whoever it&rsquo;s told to. Whatever they agree to, the contract decides what
+          actually happens.
         </p>
         <a
-          href="#attempt"
+          href="#shop"
           className="range-fade reveal group mt-10 inline-flex items-center gap-3 border-b-2 border-string pb-1 text-[1.2rem] font-extrabold uppercase tracking-[-0.02em]"
         >
-          Write to the agent
+          Start with the shop
           <ArrowDown
             className="size-5 transition-transform group-hover:translate-y-1"
             strokeWidth={2.5}
@@ -178,10 +180,21 @@ export function RangeApp() {
         <Stats stats={stats} className="range-fade reveal mt-16 md:mt-20" />
       </header>
 
+      <ShopChallenge
+        session={session}
+        offline={offline}
+        onConnect={connect}
+        onSignedOut={() => {
+          setSession(null);
+          saveSession(null);
+        }}
+      />
+
       <Block
-        label="How it works"
-        intro="Four rules. The agent is the easy part; the contract is the target."
-        className="border-t border-paper/15"
+        id="procurebot"
+        label="Make ProcureBot pay you"
+        intro="The second challenge. ProcureBot pays for things from its own account. Four rules: the agent is the easy part, the contract is the target."
+        className="scroll-mt-20 border-t border-paper/15"
       >
         <ol className="grid gap-x-12 gap-y-12 md:grid-cols-2">
           {rules.map((r, i) => (

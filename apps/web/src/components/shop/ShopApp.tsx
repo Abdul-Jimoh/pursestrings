@@ -476,7 +476,7 @@ function limits(p: Policy | null) {
   ];
 }
 
-function ContractLine({ quote }: { quote: NonNullable<Line["quote"]> }) {
+export function ContractLine({ quote }: { quote: NonNullable<Line["quote"]> }) {
   const { ok, text } = quoteLine(quote.decision);
   return (
     <li className={`border-l-2 py-1 pl-4 ${ok ? "border-paid" : "border-refused"}`}>

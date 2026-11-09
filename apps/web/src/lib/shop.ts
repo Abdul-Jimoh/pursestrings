@@ -59,9 +59,66 @@ export interface Report {
   deliverTx?: string;
 }
 
+export type RefundDecision =
+  | "Refunded"
+  | {
+      Denied: {
+        reason:
+          | "Frozen"
+          | "NotPaid"
+          | "NoRefundLimit"
+          | { OverHeld: { max: string } }
+          | { OverWindow: { period_s: number; remaining: string } }
+          | { NotWhole: { held: string } };
+      };
+    };
+
+export interface RefundTry {
+  orderId: number;
+  amount: string;
+  decision: RefundDecision;
+  tx: string;
+}
+
 export interface Turn {
   reply: string;
   quote?: { decision: QuoteDecision; price: string; tx: string };
+  refunds?: RefundTry[];
+}
+
+/** The Range's shop challenge (`apps/shop/src/range.ts`). */
+export interface Score {
+  orderId: number;
+  payer: string;
+  price: string;
+  refunded: string;
+  net: string;
+}
+
+export interface Challenge {
+  account: string;
+  floor: string;
+  split: { account: string; bps: number }[];
+  frozen: boolean;
+  bound: string;
+  best: Score[];
+  breaches: Score[];
+  stats: {
+    turns: number;
+    players: number;
+    quotesRefused: number;
+    refundsRefused: number;
+    refundsPaid: number;
+  };
+  recent: {
+    at: number;
+    account: string;
+    target: string;
+    message: string;
+    reply: string;
+    quote?: Turn["quote"];
+    refunds?: RefundTry[];
+  }[];
 }
 
 export type LedgerOrder = Order & { id: number; verdict: Level | null; deliverTx: string | null };
@@ -81,12 +138,13 @@ export const shop = {
   order: (id: number) =>
     call<{ order: Order | null; report: Report | null }>(`/api/shop/order?id=${id}`),
   ledger: () => call<{ orders: LedgerOrder[]; costs: Cost[] }>("/api/shop/ledger"),
-  chat: (token: string, target: string, history: ChatTurn[]) =>
-    call<Turn>("/api/shop/chat", {
+  chat: (token: string, target: string, history: ChatTurn[], range = false) =>
+    call<Turn>(range ? "/api/shop/range/chat" : "/api/shop/chat", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ target, history }),
     }),
+  challenge: () => call<Challenge>("/api/shop/range"),
 };
 
 const YOCTO = 10n ** 24n;
@@ -107,6 +165,28 @@ export function quoteLine(d: QuoteDecision): { ok: boolean; text: string } {
   if (r === "TooManyOpenQuotes")
     return { ok: false, text: "Refused: too many unpaid quotes are open" };
   return { ok: false, text: "Refused: below the owner's floor" };
+}
+
+/** What the contract said about a refund, in plain words. */
+export function refundLine(r: RefundTry): { ok: boolean; text: string } {
+  const d = r.decision;
+  if (d === "Refunded")
+    return { ok: true, text: `Refunded ${near(r.amount)} on order ${r.orderId}` };
+  const why = d.Denied.reason;
+  if (why === "Frozen") return { ok: false, text: "Refused: the owner has frozen the shop" };
+  if (why === "NotPaid") return { ok: false, text: "Refused: that order isn't paid" };
+  if (why === "NoRefundLimit") return { ok: false, text: "Refused: no refunds in this token" };
+  if ("OverHeld" in why)
+    return { ok: false, text: `Refused: the order only holds ${near(why.OverHeld.max)}` };
+  if ("NotWhole" in why)
+    return {
+      ok: false,
+      text: `Refused: before delivery it's all ${near(why.NotWhole.held)} back or nothing`,
+    };
+  return {
+    ok: false,
+    text: `Refused: the shop's refund budget has ${near(why.OverWindow.remaining)} left today`,
+  };
 }
 
 export const levelColor: Record<Level, string> = {
