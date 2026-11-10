@@ -63,7 +63,11 @@ if (!migration) {
   } else {
     await call(signer(owner), ACCOUNT, "propose", args, 1n);
   }
-  migration = await queued();
+  // Views read final state, a few seconds behind the transaction.
+  for (let i = 0; i < 10 && !migration; i++) {
+    await new Promise((r) => setTimeout(r, 2_000));
+    migration = await queued();
+  }
   if (!migration) throw new Error("the owner's proposal didn't queue a migration");
 }
 const [id, { eta }] = migration;
