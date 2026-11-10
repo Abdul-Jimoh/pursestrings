@@ -170,11 +170,14 @@ const NEAR_TX =
 const EVM_TX =
   /(?:^|\s)https:\/\/(?:sepolia\.)?(?:basescan\.org|etherscan\.io|[a-z0-9-]+\.blockscout\.com)\/tx\/(0x[0-9a-fA-F]{64})\b/;
 
+type NearTx = { transaction?: { signer_id?: string; receiver_id?: string } };
+
 /**
- * Whether `evidence` links a transaction on a block explorer that involves `address`. NEAR
- * transactions are looked up by hash in the transactions API, or else by RPC with the address
- * or the reporter as the sender; EVM ones in Blockscout. Any address page or unrelated
- * transaction proves nothing.
+ * Whether `evidence` links a transaction that `address` signed or received: NEAR transactions
+ * are looked up by hash in the transactions API, or else by RPC with the address or the
+ * reporter as the sender; EVM ones in Blockscout, by `from` and `to`. The parties must match
+ * exactly. This shows the address was used, not that it scammed anyone: anyone can send it a
+ * transaction, so trust tiers, council approval and retraction are what limit a bad report.
  */
 export async function linkedTxInvolves(
   evidence: string,
@@ -184,29 +187,32 @@ export async function linkedTxInvolves(
 ): Promise<boolean> {
   const f = s.fetch ?? fetch;
   const a = address.toLowerCase();
-  const mentions = (x: unknown) => x !== undefined && JSON.stringify(x).toLowerCase().includes(a);
+  const party = (tx: NearTx | undefined) =>
+    [tx?.transaction?.signer_id, tx?.transaction?.receiver_id].some((p) => p?.toLowerCase() === a);
   const near = NEAR_TX.exec(evidence)?.[1];
   if (near && chainOf(address) === "near") {
-    const indexed = await json<{ transactions?: unknown[] }>(f, `${s.nearTx}/v0/transactions`, {
+    const indexed = await json<{ transactions?: NearTx[] }>(f, `${s.nearTx}/v0/transactions`, {
       tx_hashes: [near],
     }).catch(() => undefined);
-    if (indexed?.transactions?.length) return mentions(indexed.transactions);
+    if (indexed?.transactions?.length) return indexed.transactions.some(party);
     for (const sender of [address, reporter]) {
-      const out = await json<{ result?: unknown }>(f, s.nearRpc, {
+      const out = await json<{ result?: NearTx }>(f, s.nearRpc, {
         jsonrpc: "2.0",
         id: 0,
         method: "tx",
         params: { tx_hash: near, sender_account_id: sender },
       }).catch(() => undefined);
-      if (out?.result) return mentions(out.result);
+      if (out?.result) return party(out.result);
     }
     return false;
   }
   const evm = EVM_TX.exec(evidence)?.[1];
   if (evm && chainOf(address) !== "near" && chainOf(address) !== null) {
-    return mentions(
-      await json(f, `${s.blockscout}/api/v2/transactions/${evm}`).catch(() => undefined),
-    );
+    const tx = await json<{ from?: { hash?: string }; to?: { hash?: string } }>(
+      f,
+      `${s.blockscout}/api/v2/transactions/${evm}`,
+    ).catch(() => undefined);
+    return [tx?.from?.hash, tx?.to?.hash].some((p) => p?.toLowerCase() === a);
   }
   return false;
 }

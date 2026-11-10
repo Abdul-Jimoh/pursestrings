@@ -25,7 +25,7 @@ version, deploy the real contracts and drive them through signed transactions.
 
 `add_agent` creates a function-call key whose receiver is the account itself and whose methods are
 only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
-([admin.rs:30](contracts/pursestrings/src/admin.rs#L30)). NEAR's protocol rejects any other use
+([admin.rs:32](contracts/pursestrings/src/admin.rs#L32)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
 ([lib.rs:318](contracts/pursestrings/src/lib.rs#L318)). The one selling method that pays anything out, `refund`, can only
@@ -71,7 +71,7 @@ Tests:
 `propose` splits a batch with `classify`
 ([policy.rs:344](contracts/pursestrings/src/policy.rs#L344)): an op that isn't provably at least
 as strict as the current policy goes into the queue with an `eta`; the rest apply at once
-([admin.rs:94](contracts/pursestrings/src/admin.rs#L94)). Unfreezing and adding recipients count
+([admin.rs:96](contracts/pursestrings/src/admin.rs#L96)). Unfreezing and adding recipients count
 as loosening. So does any change to a window's length: usage is kept per length, and a new
 length would start from zero
 ([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L904)).
@@ -105,9 +105,9 @@ screener's say-so.
 
 ### 6. Kill switch
 
-`freeze` ([admin.rs:85](contracts/pursestrings/src/admin.rs#L85)) makes every request fail with
+`freeze` ([admin.rs:87](contracts/pursestrings/src/admin.rs#L87)) makes every request fail with
 `Frozen` and blocks approving pending ones. `revoke_agent`
-([admin.rs:55](contracts/pursestrings/src/admin.rs#L55)) deletes the key in the same
+([admin.rs:57](contracts/pursestrings/src/admin.rs#L57)) deletes the key in the same
 transaction. Each is one owner transaction.
 
 Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
@@ -121,7 +121,7 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:183](contracts/pursestrings/src/admin.rs#L183)) checks with the factory that the hash
+([admin.rs:185](contracts/pursestrings/src/admin.rs#L185)) checks with the factory that the hash
 was published before deploying it. Once the proposal is due, anyone can deliver code matching the
 hash, so a DAO owner never has to store the wasm in a proposal of its own. That makes a due
 migration final unless the owner cancels it before the timelock ends, or the account is frozen:

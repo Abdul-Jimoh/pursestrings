@@ -68,8 +68,8 @@ fn release(asset: &Asset, key: &[u8], amount: u128) {
 /// and the trie's per-record overhead), rounded up.
 const ORDER_BYTES: u128 = 1_000;
 /// How far back `migrate` looks for paid orders the old code didn't track. Undelivered orders
-/// are recent, since the delivery window is short; the bound keeps `migrate` inside its 30 Tgas,
-/// and the upgrade script checks every order before proposing.
+/// are recent, since the delivery window is short. With all 50 untracked, `migrate` burned
+/// about 14 Tgas in the sandbox; the upgrade script also checks every order and open quote.
 const RECOUNT_ORDERS: u64 = 50;
 
 impl Pursestrings {
@@ -324,6 +324,15 @@ impl Pursestrings {
             env::panic_str(reason);
         }
         let price = self.orders.get(&order_id).expect("checked").price.0;
+        // The order's storage must come from the account's own NEAR, not from what it holds for
+        // other buyers; finished orders stay on the public ledger.
+        let byte = env::storage_byte_cost().as_yoctonear();
+        let stake = u128::from(env::storage_usage()) * byte;
+        require!(
+            env::account_balance().as_yoctonear() - amount
+                >= stake + held_near() + ORDER_BYTES * byte,
+            "the shop can't afford to store another order"
+        );
         let change = amount - price;
         if change > 0 {
             Promise::new(payer.clone())
@@ -944,6 +953,34 @@ mod tests {
             u128::from(MAX_OPEN_QUOTES - c.open_quotes) * slot,
             "an account that doesn't sell keeps no quote slots"
         );
+    }
+
+    #[test]
+    fn a_payment_is_refused_if_the_shop_cant_store_the_order() {
+        let mut c = shop();
+        quote(&mut c, 2_000_000);
+        let ctx = |balance: u128| {
+            testing_env!(
+                VMContextBuilder::new()
+                    .current_account_id("purse.near".parse().unwrap())
+                    .predecessor_account_id(buyer())
+                    .attached_deposit(NearToken::from_yoctonear(2_000_000))
+                    .account_balance(NearToken::from_yoctonear(balance))
+                    .block_timestamp(1_010 * 1_000_000_000)
+                    .build()
+            );
+        };
+        ctx(0);
+        let byte = env::storage_byte_cost().as_yoctonear();
+        let need = u128::from(env::storage_usage()) * byte + ORDER_BYTES * byte;
+        ctx(need - 1);
+        assert!(
+            fails(|| c.pay(0)),
+            "storing it would come out of other buyers' payments"
+        );
+        ctx(need);
+        c.pay(0);
+        assert_eq!(c.order(0).unwrap().status, OrderStatus::Paid);
     }
 
     #[test]

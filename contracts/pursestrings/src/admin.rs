@@ -19,7 +19,9 @@ struct CodeHashArgs {
 
 const FACTORY_CHECK_GAS: Gas = Gas::from_tgas(10);
 const MIGRATION_CALLBACK_GAS: Gas = Gas::from_tgas(120);
-const MIGRATE_GAS: Gas = Gas::from_tgas(30);
+/// The recount in `migrate` measured about 14 Tgas at its worst in the sandbox; mainnet's deeper
+/// trie costs more per read.
+const MIGRATE_GAS: Gas = Gas::from_tgas(60);
 
 #[near]
 impl Pursestrings {

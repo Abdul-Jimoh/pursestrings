@@ -44,15 +44,25 @@ const queued = async () =>
     ([, p]) => p.ops.length === 1 && p.ops[0]?.Migrate?.code_hash === hash,
   );
 let migration = await queued();
-// Orders paid and shares left unpaid under code that didn't track held NEAR stay unprotected
-// after the upgrade, so a shop upgrades with none open.
+// Orders paid and shares left unpaid under code that didn't track held NEAR may stay
+// unprotected after the upgrade (`migrate` only recounts the newest orders), so a shop upgrades
+// with none open, and with no open quote that could be paid under the old code meanwhile.
 const open: number[] = [];
+const quoted: number[] = [];
+const nowS = Math.floor(Date.now() / 1000);
 for (let before = await view<number>(ACCOUNT, "next_order_id"); before > 0; before -= 100) {
-  const page = await view<[number, { status: string }][]>(ACCOUNT, "recent_orders", {
-    before,
-    limit: 100,
-  });
+  const page = await view<[number, { status: string; expires_at: number }][]>(
+    ACCOUNT,
+    "recent_orders",
+    {
+      before,
+      limit: 100,
+    },
+  );
   open.push(...page.filter(([, o]) => o.status === "Paid").map(([id]) => id));
+  quoted.push(
+    ...page.filter(([, o]) => o.status === "Quoted" && o.expires_at > nowS).map(([id]) => id),
+  );
 }
 const split = (await view<{ split: { account: string }[] }>(ACCOUNT, "policy")).split;
 const unpaid: string[] = [];
@@ -60,9 +70,9 @@ for (const { account } of split) {
   const owed = await view<string>(ACCOUNT, "unpaid", { account, asset: "Near" });
   if (owed !== "0") unpaid.push(`${account} (${owed} yocto)`);
 }
-if ((open.length || unpaid.length) && process.env.ALLOW_OPEN_ORDERS !== "1")
+if ((open.length || unpaid.length || quoted.length) && process.env.ALLOW_OPEN_ORDERS !== "1")
   throw new Error(
-    `deliver or refund paid orders [${open.join(", ")}] and retry unpaid shares [${unpaid.join(", ")}] first`,
+    `deliver or refund paid orders [${open.join(", ")}], retry unpaid shares [${unpaid.join(", ")}] and let quotes [${quoted.join(", ")}] expire first`,
   );
 if (!migration) {
   const args = { ops: [{ Migrate: { code_hash: hash } }] };

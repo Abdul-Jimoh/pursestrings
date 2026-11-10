@@ -97,6 +97,26 @@ describe("bounty review rules", () => {
     expect(await linkedTxInvolves(`see ${link}`, "other.testnet", "me.testnet", indexed)).toBe(
       false,
     );
+    expect(
+      await linkedTxInvolves(`see ${link}`, "rain.testnet", "me.testnet", indexed),
+      "a name inside another name",
+    ).toBe(false);
+    const inLogs = sources((url) =>
+      url === "https://tx/v0/transactions"
+        ? {
+            transactions: [
+              {
+                transaction: { signer_id: "me.testnet", receiver_id: "me.testnet" },
+                logs: ["drain.testnet"],
+              },
+            ],
+          }
+        : undefined,
+    );
+    expect(
+      await linkedTxInvolves(`see ${link}`, "drain.testnet", "me.testnet", inLogs),
+      "only named in a log or memo",
+    ).toBe(false);
     calls.length = 0;
     expect(
       await linkedTxInvolves(
