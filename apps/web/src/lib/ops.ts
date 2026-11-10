@@ -66,7 +66,7 @@ export function tightens(op: Op, p: Policy): boolean {
   if ("SetVelocity" in op) {
     const n = (op.SetVelocity as { velocity: Velocity | null }).velocity;
     const c = p.velocity;
-    return c === null ? true : n === null ? false : n.max <= c.max && n.period_s >= c.period_s;
+    return c === null ? true : n === null ? false : n.max <= c.max && n.period_s === c.period_s;
   }
   if ("SetCooldown" in op) return (op.SetCooldown as { seconds: number }).seconds >= p.cooldown_s;
   if ("SetTimelock" in op) return (op.SetTimelock as { seconds: number }).seconds >= p.timelock_s;

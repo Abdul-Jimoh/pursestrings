@@ -136,6 +136,10 @@ export class Pursestrings {
   record(account: string) {
     return this.view<TrustRecord>("record", { account });
   }
+  /** NEAR held for buyers' undelivered orders and unpaid split shares, which nothing can spend. */
+  async owedNear() {
+    return BigInt(await this.view<string>("owed_near", {}));
+  }
 
   /** The agent signs with its function-call key on the account itself. */
   agent(secretKey: string): Agent {
@@ -300,6 +304,10 @@ export class Owner extends Caller {
   }
   withdraw(asset: Asset, amount: bigint) {
     return this.owner<void>("withdraw", { asset, amount: amount.toString() });
+  }
+  /** Takes a paid scam report back off the list, with the point it earned. */
+  retractBounty(id: number) {
+    return this.owner<void>("retract_bounty", { id });
   }
   registerIntentsKey() {
     return this.owner<void>("register_intents_key");

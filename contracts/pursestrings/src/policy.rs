@@ -317,8 +317,10 @@ fn group_tighter(new: &BudgetGroup, cur: &BudgetGroup) -> bool {
         && windows_tighter(&new.windows, &cur.windows)
 }
 
+/// Usage is kept per window length, so a new length would start from zero: only the same
+/// length with a lower limit is tighter.
 fn window_tighter(new: &WindowLimit, cur: &WindowLimit) -> bool {
-    new.limit.0 <= cur.limit.0 && new.period_s >= cur.period_s
+    new.limit.0 <= cur.limit.0 && new.period_s == cur.period_s
 }
 
 /// Limits only change at a tier's points, so comparing there covers every points value.
@@ -346,7 +348,7 @@ pub fn classify(op: &PolicyOp, p: &Policy) -> Effect {
         PolicyOp::SetVelocity { velocity } => match (velocity, p.velocity) {
             (_, None) => true,
             (None, Some(_)) => false,
-            (Some(n), Some(c)) => n.max <= c.max && n.period_s >= c.period_s,
+            (Some(n), Some(c)) => n.max <= c.max && n.period_s == c.period_s,
         },
         PolicyOp::SetMinRate(new) => p
             .min_rate(&new.sell, &new.buy)
@@ -649,8 +651,8 @@ impl Policy {
                 && self
                     .floors
                     .iter()
-                    .all(|f| near_side(&f.asset) && f.min.0 > 0),
-            "price floors: unique NEAR or NEP-141 assets, positive"
+                    .all(|f| f.asset == Asset::Near && f.min.0 > 0),
+            "price floors: NEAR only, positive"
         );
         require!(
             self.split.len() <= MAX_SHARES
@@ -898,13 +900,55 @@ pub mod tests {
     }
 
     #[test]
+    fn a_new_window_length_is_a_loosening() {
+        let mut p = base_policy();
+        p.fee_budget.limit = U128(100);
+        p.refund_limits.push(RefundLimit {
+            asset: Asset::Near,
+            window: WindowLimit {
+                period_s: 86_400,
+                limit: U128(100),
+            },
+        });
+        let fee = |limit, period_s| {
+            PolicyOp::SetFeeBudget(WindowLimit {
+                period_s,
+                limit: U128(limit),
+            })
+        };
+        let refund = |limit, period_s| {
+            PolicyOp::SetRefundLimit(RefundLimit {
+                asset: Asset::Near,
+                window: WindowLimit {
+                    period_s,
+                    limit: U128(limit),
+                },
+            })
+        };
+        for op in [fee(50, 86_400), refund(50, 86_400)] {
+            assert_eq!(classify(&op, &p), Effect::Tighten);
+        }
+        for op in [fee(100, 172_800), refund(100, 172_800)] {
+            assert_eq!(
+                classify(&op, &p),
+                Effect::Loosen,
+                "usage would restart at zero"
+            );
+        }
+    }
+
+    #[test]
     fn velocity_ops() {
         let p = base_policy();
         let v = |max, period_s| PolicyOp::SetVelocity {
             velocity: Some(Velocity { max, period_s }),
         };
         assert_eq!(classify(&v(5, 3_600), &p), Effect::Tighten);
-        assert_eq!(classify(&v(10, 7_200), &p), Effect::Tighten);
+        assert_eq!(
+            classify(&v(10, 7_200), &p),
+            Effect::Loosen,
+            "a new window length starts with no usage"
+        );
         assert_eq!(classify(&v(5, 1_800), &p), Effect::Loosen);
         assert_eq!(
             classify(&PolicyOp::SetVelocity { velocity: None }, &p),

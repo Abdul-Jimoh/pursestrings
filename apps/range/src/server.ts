@@ -38,8 +38,13 @@ export interface RangeDeps {
   origins?: readonly string[];
   /** More API routes, such as the shop's; they see the signed-in account, if any. */
   routes?: readonly Route[];
+  /** Sign-ins started but not finished; past this, new ones wait for old ones to expire. */
+  maxPendingSignIns?: number;
   now?: () => number;
 }
+
+/** A problem with the request itself, safe to tell the caller. */
+class BadRequest extends Error {}
 
 export const signInMessage = (nonce: string) => `Sign in to Pursestrings Range (${nonce})`;
 
@@ -47,9 +52,13 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 16_000) throw new Error("request too large");
+    if (raw.length > 16_000) throw new BadRequest("request too large");
   }
-  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  try {
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    throw new BadRequest("the body isn't JSON");
+  }
 }
 
 function send(res: ServerResponse, status: number, data: unknown) {
@@ -68,6 +77,12 @@ export function rangeServer(d: RangeDeps) {
   const now = d.now ?? Date.now;
   const nonces = new Map<string, number>();
   const sessions = new Map<string, { account: string; until: number }>();
+  const maxPending = d.maxPendingSignIns ?? 10_000;
+  const sweep = () => {
+    const t = now();
+    for (const [k, until] of nonces) if (until < t) nonces.delete(k);
+    for (const [k, s] of sessions) if (s.until < t) sessions.delete(k);
+  };
   let busy = false;
 
   return createServer(async (req, res) => {
@@ -106,6 +121,9 @@ export function rangeServer(d: RangeDeps) {
         });
       }
       if (req.method === "POST" && url.pathname === "/api/nonce") {
+        sweep();
+        if (nonces.size >= maxPending)
+          return send(res, 503, { error: "too many sign-ins in progress; try again in a minute" });
         const nonce = randomBytes(32).toString("base64");
         nonces.set(nonce, now() + NONCE_MS);
         return send(res, 200, {
@@ -189,7 +207,9 @@ export function rangeServer(d: RangeDeps) {
       }
       send(res, 404, { error: "not found" });
     } catch (e) {
-      send(res, 500, { error: (e as Error).message });
+      if (e instanceof BadRequest) return send(res, 400, { error: e.message });
+      console.error(e);
+      send(res, 500, { error: "something went wrong on our side" });
     }
   });
 }

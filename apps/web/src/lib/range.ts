@@ -91,6 +91,7 @@ const reasons: Record<string, string> = {
   GasCapsMissing: "the owner hasn't set gas limits for that chain",
   NoGasBudget: "there's no gas budget for that chain",
   IntentsKeyMissing: "swaps aren't set up for this account",
+  HeldForOthers: "that NEAR is held for buyers' orders",
 };
 
 /** The contract's denial reason in plain words. */

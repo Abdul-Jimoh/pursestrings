@@ -256,6 +256,10 @@ pub enum DenyReason {
     BountyMismatch,
     /// Bounty payouts need a trust rule for the asset.
     NoTrustRule,
+    /// The NEAR is held for buyers' undelivered orders or unpaid split shares.
+    HeldForOthers {
+        spendable: U128,
+    },
 }
 
 #[near(serializers = [borsh, json])]

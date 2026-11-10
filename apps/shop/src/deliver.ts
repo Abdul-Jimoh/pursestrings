@@ -10,6 +10,7 @@ import {
   type Verdict,
   verdict,
 } from "./check.ts";
+import { allOrders } from "./range.ts";
 import type { Chat } from "./seller.ts";
 
 export interface Report {
@@ -90,7 +91,7 @@ export async function deliverPaid(d: Deliverer): Promise<number[]> {
   const now = d.now ?? Date.now;
   const log = d.log ?? console.log;
   const done: number[] = [];
-  for (const [orderId, order] of await d.shop.recentOrders(50)) {
+  for (const [orderId, order] of await allOrders(d.shop)) {
     if (order.status !== "Paid" || !order.item.startsWith("check:")) continue;
     const target = order.item.slice("check:".length);
     let report = d.reports.get(orderId);
@@ -102,6 +103,8 @@ export async function deliverPaid(d: Deliverer): Promise<number[]> {
       const v = verdict(facts, now());
       const text = await writeReport(d.model, facts, v);
       report = { orderId, target, facts, verdict: v, text, at: now() };
+      // Saved before delivering: once the receipt is on-chain the report must already exist.
+      d.reports.save(report);
     }
     const receipt = `sha256:${createHash("sha256")
       .update(JSON.stringify({ ...report, receipt: undefined, deliverTx: undefined }))

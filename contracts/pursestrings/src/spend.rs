@@ -212,6 +212,18 @@ impl Pursestrings {
             !matches!(&req.spend.dest, Dest::Near { account } if *account == who),
             "a council member can't approve a payout to themselves"
         );
+        if let Some(id) = req.spend.bounty {
+            let b = self.bounties.get(&id).expect("unknown bounty");
+            require!(
+                b.poster != who,
+                "a council member can't approve a payout on a bounty they posted"
+            );
+            let council_up_to = self.trust_limits(b, &req.spend).map_or(0, |(_, c)| c);
+            require!(
+                req.spend.amount.0 <= council_up_to,
+                "the claimant's tier no longer allows a council approval"
+            );
+        }
         self.start_pending(req_id);
     }
 
@@ -263,6 +275,7 @@ impl Pursestrings {
         };
         let status = req.status;
         let bounty = req.spend.bounty;
+        let amount = req.spend.amount.0;
         if ok {
             req.reservations = reservations;
         } else {
@@ -270,15 +283,21 @@ impl Pursestrings {
         }
         Event::RequestStatus { req_id, status }.emit();
         if let Some(id) = bounty {
-            self.bounty_settled(id, ok);
+            self.bounty_settled(id, ok.then_some(amount));
         }
     }
 
+    /// Approval runs the request against today's policy, so a recipient or cap removed while
+    /// it waited, or NEAR now held for buyers, stops it.
     fn start_pending(&mut self, req_id: u64) {
         require!(!self.policy.frozen, "frozen");
-        let req = self.requests.get_mut(&req_id).expect("unknown request");
+        let req = self.requests.get(&req_id).expect("unknown request");
         require!(req.status.is_pending(), "not pending");
         require!(req.expires_at.is_none_or(|t| now_s() < t), "expired");
+        if let Err(reason) = self.still_allowed(&req.spend) {
+            env::panic_str(&format!("the policy no longer allows it: {reason:?}"));
+        }
+        let req = self.requests.get_mut(&req_id).expect("unknown request");
         req.status = RequestStatus::Executing;
         let spend = req.spend.clone();
         Event::RequestStatus {
@@ -287,6 +306,25 @@ impl Pursestrings {
         }
         .emit();
         self.execute(req_id, &spend).detach();
+    }
+
+    fn still_allowed(&self, req: &SpendRequest) -> Result<(), DenyReason> {
+        let rule = self
+            .policy
+            .rule(&req.asset)
+            .ok_or(DenyReason::AssetNotAllowed)?;
+        if req.amount.0 > rule.per_tx_cap.0 {
+            return Err(DenyReason::OverPerTxCap {
+                cap: rule.per_tx_cap,
+            });
+        }
+        check_dest(&self.policy, req, req.bounty.is_some())?;
+        if req.asset == Asset::Near && req.amount.0 > crate::sales::spendable_near() {
+            return Err(DenyReason::HeldForOthers {
+                spendable: U128(crate::sales::spendable_near()),
+            });
+        }
+        Ok(())
     }
 
     pub(crate) fn evaluate(
@@ -370,6 +408,14 @@ impl Pursestrings {
         }
         if matches!(req.dest, Dest::Intent(IntentDest::Swap { .. })) && self.intents_key.is_none() {
             return Err(DenyReason::IntentsKeyMissing);
+        }
+        if req.asset == Asset::Near {
+            let spendable = crate::sales::spendable_near();
+            if amount > spendable {
+                return Err(DenyReason::HeldForOthers {
+                    spendable: U128(spendable),
+                });
+            }
         }
         let above = |t: Option<U128>| t.is_some_and(|t| amount > t.0);
         Ok(if above(rule.risk_check_above) {
@@ -492,7 +538,7 @@ impl Pursestrings {
         self.release(&reservations);
         Event::RequestStatus { req_id, status }.emit();
         if let Some(id) = bounty {
-            self.bounty_settled(id, false);
+            self.bounty_settled(id, None);
         }
     }
 

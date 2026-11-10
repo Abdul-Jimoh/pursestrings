@@ -72,23 +72,29 @@ contract and tested.
 
 | However it's talked into it, the agent can't… | Because | Test |
 |---|---|---|
-| Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:115](contracts/pursestrings/src/sales.rs#L115)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L106) |
-| Keep a payment without delivering | Payments are held until `deliver`; after the delivery window the buyer takes it back, even if the shop is frozen ([sales.rs:267](contracts/pursestrings/src/sales.rs#L267)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L182) |
-| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:478](contracts/pursestrings/src/sales.rs#L478)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L246) |
-| Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:363](contracts/pursestrings/src/policy.rs#L363)) | [`near_payments_split_exactly_and_redirecting_revenue_waits`](contracts/pursestrings/tests/shop.rs#L228) |
-| Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:183](contracts/pursestrings/src/bounty.rs#L183) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L69) |
-| Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L292)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
+| Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:148](contracts/pursestrings/src/sales.rs#L148)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L88) |
+| Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:288](contracts/pursestrings/src/sales.rs#L288)). While frozen, the agent can't mark orders delivered ([sales.rs:257](contracts/pursestrings/src/sales.rs#L257)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L203) |
+| Spend what buyers paid | Neither the owner's `withdraw` nor an agent's NEAR spend can touch NEAR held for undelivered orders or unpaid shares ([sales.rs:42](contracts/pursestrings/src/sales.rs#L42)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L721) |
+| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:508](contracts/pursestrings/src/sales.rs#L508)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
+| Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:365](contracts/pursestrings/src/policy.rs#L365)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L88) |
+| Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:234](contracts/pursestrings/src/bounty.rs#L234) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L75) |
+| Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L330)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
+
+The contract can't check what was delivered: `deliver` records a receipt, such as the report's
+hash, that the buyer can compare. Holding the payment protects a buyer from an agent that never
+delivers, not from one that delivers something false.
 
 The agents' judgement is kept away from the money too. The checks' verdicts come from fixed
 rules and the model only writes the explanation ([check.ts](apps/shop/src/check.ts)). The bounty
-agent's rules decide whether a report qualifies, and the model may only veto
+agent's rules decide whether a report qualifies: the address must imitate a protected name, be
+flagged by the block explorer, or come with a block explorer link. The model may only veto
 ([board.ts](apps/shop/src/board.ts)).
 
 ## Earned trust, and the DAO above it
 
 Who approves a bounty payout depends on how many paid reports the reporter already has. Points
-come only from paid bounties, and each traces back to its bounty
-([bounty.rs:164](contracts/pursestrings/src/bounty.rs#L164)).
+come only from bounties paid in full, and each traces back to its bounty
+([bounty.rs:266](contracts/pursestrings/src/bounty.rs#L266), [`a_partial_payout_earns_no_point`](contracts/pursestrings/src/bounty.rs#L488)).
 
 | Reporter's points | Paid with no approval | One council member can approve | Above that |
 |---|---|---|---|
@@ -98,11 +104,19 @@ come only from paid bounties, and each traces back to its bounty
 
 These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testnet-setup.ts)).
 
-- **Council members can't approve their own payouts** ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213)).
+- **Council members can't approve their own payouts, or any payout on a bounty they posted**,
+  so a second account doesn't help ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213),
+  [test](contracts/pursestrings/src/bounty.rs#L501)). A council approval uses the tier in force at that moment, not when
+  the request was made ([test](contracts/pursestrings/src/bounty.rs#L518)).
+- **The DAO can take a wrong report back.** A retracted bounty leaves the scam list and the
+  reporter loses its point; the payout isn't clawed back ([bounty.rs:168](contracts/pursestrings/src/bounty.rs#L168),
+  [test](contracts/pursestrings/src/bounty.rs#L532)).
+- **One open claim per account**, so nobody can sit on every bounty at once
+  ([bounty.rs:105](contracts/pursestrings/src/bounty.rs#L105), [test](contracts/pursestrings/src/bounty.rs#L550)).
 - **Any council member can freeze the board at once**
-  ([admin.rs:81](contracts/pursestrings/src/admin.rs#L81)). Unfreezing, adding a council member
+  ([admin.rs:85](contracts/pursestrings/src/admin.rs#L85)). Unfreezing, adding a council member
   or raising a tier waits for a DAO vote and then the timelock
-  ([`any_council_member_freezes_and_only_the_dao_loosens_after_the_timelock`](contracts/pursestrings/tests/board.rs#L137)).
+  ([`any_council_member_freezes_and_only_the_dao_loosens_after_the_timelock`](contracts/pursestrings/tests/board.rs#L144)).
 - **The DAO is the real mainnet Sputnik v3.2 code**, in the sandbox tests and on testnet.
 
 ## How hard it's been pushed
@@ -120,7 +134,8 @@ pie showData
   reason expected for that attack ([marathon.ts](apps/shop/scripts/marathon.ts), results with
   sample transactions in [marathon.json](apps/web/public/marathon.json)).
 - **Property tests:** random policies and random histories of requests, approvals, rejections,
-  refunds and deliveries, checked against a plain model of the rules, 10,000 cases each in CI
+  payments, refunds and deliveries, checked against a plain model of the rules, 10,000 cases each
+  in CI. After every step, the NEAR kept out of reach must equal what undelivered orders hold
   ([props.rs](contracts/pursestrings/src/props.rs)). Breaking any one rule in the contract makes
   them fail. Writing them found a real bug: a partial refund before delivery could sell a check
   below the floor. It's fixed, and the live shop was upgraded
@@ -194,7 +209,7 @@ published. The seven security invariants, where each is enforced and the test fo
 | NEAR Intents | The same account is an identity on `intents.near`: transfers, withdrawals and contract-built swaps under the same policy ([tests/intents.rs](contracts/pursestrings/tests/intents.rs), mainnet v0.4.5 code) |
 | Sputnik DAO | Owns the bounty board; votes payouts above the council's limit and every loosening |
 | Factory sub-accounts | `<name>.<factory>` with no access keys at all ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)) |
-| NEP-141, NEP-297, NEP-413 | Token payments, an event for every decision, wallet sign-in |
+| NEP-141, NEP-297, NEP-413 | Token spends, an event for every decision, wallet sign-in |
 | NEAR AI Cloud | The agents' model (Claude Haiku 5.5) |
 
 On other chains you'd get one of these at a time: a key limited by the protocol, a contract that
@@ -214,9 +229,13 @@ can submit settlement proofs.
 
 - **The live bounty board runs older code.** Its owner is the DAO, and a 573 KB upgrade can't
   fit in one DAO proposal's 300 Tgas. The fix is that anyone can now deliver code once the
-  owner's timelocked upgrade is due, but the old code can't take it. On that board a council
-  member could still approve their own payout; the sandbox tests and `make demo` run the fixed
+  owner's timelocked upgrade is due, but the old code can't take it. That board lacks the later
+  fixes: a council member could approve their own payout, a partial payout still earns a point,
+  and there's no retraction or one-claim limit. The sandbox tests and `make demo` run the fixed
   code.
+- **The shop sells in NEAR only.** The contract can read its own NEAR balance when money leaves,
+  so it can keep buyers' payments apart. A token balance lives in the token's contract and can
+  only be read asynchronously, so token payments are sent back until that's built safely.
 - **Testnet only so far.** The mainnet run is still to come. Intents has no testnet, so its paths
   are tested in the sandbox against the mainnet `intents.near` code.
 - **No risk screener** (invariant 5): a risk threshold sends the request to the owner instead.
@@ -224,7 +243,12 @@ can submit settlement proofs.
 - **The relayer can delay** an EVM payment but can't change it. A signed transaction keeps its
   budget reserved until it's proven settled or replaced.
 - **A stolen owner key** can't loosen anything quickly, but it can approve pending requests and
-  withdraw to the owner's own account.
+  withdraw to the owner's own account (never NEAR held for buyers).
+- **An EVM cancel's own gas isn't counted.** Once a same-nonce cancel is proven, the original's
+  whole gas reservation is released, though the cancel burned some gas. Only the owner can sign a
+  cancel.
+- **A failed upgrade needs a new proposal.** If the code deploy fails, the `Migrate` proposal is
+  already used, so the owner proposes it again and waits out the timelock again.
 
 ## Repository
 

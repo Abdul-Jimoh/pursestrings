@@ -44,6 +44,9 @@ describe("tightens, as the contract's classify", () => {
     expect(tightens({ AddRecipient: shop }, policy)).toBe(false);
     expect(tightens({ SetVelocity: { velocity: { max: 5, period_s: 3_600 } } }, policy)).toBe(true);
     expect(tightens({ SetVelocity: { velocity: { max: 5, period_s: 60 } } }, policy)).toBe(false);
+    expect(tightens({ SetVelocity: { velocity: { max: 10, period_s: 7_200 } } }, policy)).toBe(
+      false,
+    );
     expect(tightens({ SetVelocity: { velocity: null } }, policy)).toBe(false);
     expect(tightens("Freeze", policy)).toBe(true);
     expect(tightens("Unfreeze", policy)).toBe(false);

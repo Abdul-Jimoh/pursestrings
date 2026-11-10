@@ -475,8 +475,9 @@ async function bountyPaid(id: number) {
     await new Promise((r) => setTimeout(r, 500));
   return (await board.bounty(id))?.status === "Paid";
 }
+/** The steward posts; a council member can't approve a payout on a bounty they posted. */
 async function submitReport(who: typeof newcomer, reward: number, work: string) {
-  const posted = await council.postBounty(
+  const posted = await steward.postBounty(
     "Report a scam address: scam:<address> <evidence>",
     "Near",
     milli(reward),

@@ -84,6 +84,9 @@ describe("bounty review rules", () => {
     ).toMatch(/already/);
     expect(no("scam:circ1e.testnet bad").reasons[0]).toMatch(/too short/);
     expect(no("scam:someone.testnet I just don't like them").reasons[0]).toMatch(/Nothing backs/);
+    expect(no("scam:someone.testnet see https://example.com/proof").reasons[0]).toMatch(
+      /Nothing backs/,
+    );
   });
 });
 

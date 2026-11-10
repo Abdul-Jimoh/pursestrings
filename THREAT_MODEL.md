@@ -13,8 +13,8 @@ version, deploy the real contracts and drive them through signed transactions.
 | Actor | Holds | Can | Can't |
 |---|---|---|---|
 | Agent | A function-call key on the Pursestrings account, limited to `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`, with a capped gas allowance | Ask for a payment; cancel its own pending request; quote a price at or above the owner's floor; record a delivery; refund a buyer in full before delivery, or from the kept share after it, within the refund window | Attach a deposit, call any other method, sign anything, change the policy, quote under the floor, change where sales go |
-| Owner | Their own NEAR account (a wallet) | Approve co-signs, tighten the policy instantly, propose loosening, freeze, revoke agents, withdraw to itself | Loosen anything before the timelock ends; change the code to a hash the factory didn't publish |
-| Council member | Their own NEAR account | Approve bounty payouts their tier allows, post bounties, freeze | Approve payouts above the council tier, unfreeze, change the policy |
+| Owner | Their own NEAR account (a wallet) | Approve co-signs, tighten the policy instantly, propose loosening, freeze, revoke agents, withdraw to itself (except NEAR held for buyers or unpaid shares), retract a paid scam report | Loosen anything before the timelock ends; change the code to a hash the factory didn't publish |
+| Council member | Their own NEAR account | Approve bounty payouts their tier allows, post bounties, freeze | Approve payouts above the council tier (checked at approval), to themselves or on a bounty they posted; unfreeze; change the policy |
 | Buyer or contributor | A NEAR account | Pay a quote (a wrong payment comes back in full); claim and submit a bounty | Get paid for a bounty they didn't claim, or more than its reward |
 | Relayer | Nothing | Broadcast signed EVM transactions and intents the contract already approved | Change what was signed; mark a payment done (only an MPC proof can) |
 | Anyone | A NEAR account | Call `confirm_evm`, `release_evm`, `settle_intent`, `expire_request`, `prune_requests`; deliver the code for a migration the owner proposed, once it's due | Make any of those succeed without the on-chain evidence each one checks; deploy code the owner didn't propose, before the timelock ends, or while frozen |
@@ -25,13 +25,17 @@ version, deploy the real contracts and drive them through signed transactions.
 
 `add_agent` creates a function-call key whose receiver is the account itself and whose methods are
 only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
-([admin.rs:28](contracts/pursestrings/src/admin.rs#L28)). NEAR's protocol rejects any other use
+([admin.rs:30](contracts/pursestrings/src/admin.rs#L30)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
-([lib.rs:313](contracts/pursestrings/src/lib.rs#L313)). The one selling method that pays anything out, `refund`, can only
+([lib.rs:315](contracts/pursestrings/src/lib.rs#L315)). The one selling method that pays anything out, `refund`, can only
 pay whoever paid that order, only within the owner's refund window, and only as all of the
 payment before delivery or from the part of the price the account kept after it
-([sales.rs](contracts/pursestrings/src/sales.rs)).
+([sales.rs](contracts/pursestrings/src/sales.rs)). `deliver` is refused while the account is
+frozen, so a stolen agent key can't mark orders delivered and end the buyers' right to reclaim.
+NEAR held for undelivered orders or unpaid split shares is out of reach of agent spends and the
+owner's `withdraw` ([sales.rs:42](contracts/pursestrings/src/sales.rs#L42),
+[`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172)).
 
 Test: [`inv1_agent_key_cannot_move_funds`](contracts/pursestrings/tests/invariants.rs#L37) checks
 the key's receiver, methods and allowance on-chain. It then has the agent try a raw transfer,
@@ -62,10 +66,12 @@ Tests:
 ### 3. Loosening is time-locked; tightening, revoking and freezing are instant
 
 `propose` splits a batch with `classify`
-([policy.rs:337](contracts/pursestrings/src/policy.rs#L337)): an op that isn't provably at least
+([policy.rs:344](contracts/pursestrings/src/policy.rs#L344)): an op that isn't provably at least
 as strict as the current policy goes into the queue with an `eta`; the rest apply at once
-([admin.rs:88](contracts/pursestrings/src/admin.rs#L88)). Unfreezing and adding recipients count
-as loosening.
+([admin.rs:94](contracts/pursestrings/src/admin.rs#L94)). Unfreezing and adding recipients count
+as loosening. So does any change to a window's length: usage is kept per length, and a new
+length would start from zero
+([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L903)).
 
 Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/tests/invariants.rs#L170)
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it
@@ -91,14 +97,14 @@ Tests:
 
 Not built. There's no risk screener in this version. A rule's `risk_check_above` threshold routes
 the request to the owner's co-sign instead
-([spend.rs:438](contracts/pursestrings/src/spend.rs#L438)), so nothing is approved on a
+([spend.rs:484](contracts/pursestrings/src/spend.rs#L484)), so nothing is approved on a
 screener's say-so.
 
 ### 6. Kill switch
 
-`freeze` ([admin.rs:79](contracts/pursestrings/src/admin.rs#L79)) makes every request fail with
+`freeze` ([admin.rs:85](contracts/pursestrings/src/admin.rs#L85)) makes every request fail with
 `Frozen` and blocks approving pending ones. `revoke_agent`
-([admin.rs:53](contracts/pursestrings/src/admin.rs#L53)) deletes the key in the same
+([admin.rs:55](contracts/pursestrings/src/admin.rs#L55)) deletes the key in the same
 transaction. Each is one owner transaction.
 
 Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
@@ -112,7 +118,7 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:177](contracts/pursestrings/src/admin.rs#L177)) checks with the factory that the hash
+([admin.rs:183](contracts/pursestrings/src/admin.rs#L183)) checks with the factory that the hash
 was published before deploying it. Once the proposal is due, anyone can deliver code matching the
 hash, so a DAO owner never has to store the wasm in a proposal of its own. That makes a due
 migration final unless the owner cancels it before the timelock ends, or the account is frozen:
@@ -127,9 +133,14 @@ Tests:
 
 - **Spending inside the policy.** A fooled agent can still pay an allowlisted recipient up to the
   limits. The policy bounds the damage; it doesn't judge intent.
+- **A false delivery.** The contract can't check what `deliver` claims; the receipt (such as the
+  report's hash) lets the buyer check it. Holding the payment protects a buyer from an agent that
+  never delivers, not from one that delivers something false.
+- **Token sales.** The shop takes NEAR only: a token balance can't be read synchronously, so
+  token payments are sent back rather than held without the same protection.
 - **A stolen owner key.** The thief can't loosen anything quickly, but they can approve pending
-  co-signs and withdraw the account's NEAR and NEP-141 balances to the owner account, which they
-  then control. Use a wallet you'd trust with the same funds directly, or a DAO as owner
+  co-signs and withdraw the account's NEAR (except what's held for buyers) and NEP-141 balances
+  to the owner account, which they then control. Use a wallet you'd trust with the same funds directly, or a DAO as owner
   (the bounty board is owned by a Sputnik DAO: [board.rs](contracts/pursestrings/tests/board.rs)).
 - **The MPC network.** EVM and intent signatures, and `confirm_evm` / `release_evm` proofs, trust
   NEAR's Chain Signatures network.

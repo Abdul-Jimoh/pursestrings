@@ -4,7 +4,14 @@ import type { Request } from "./purse";
 import { call } from "./range";
 
 /** Mirrors `contracts/pursestrings/src/bounty.rs`. */
-export type BountyStatus = "Open" | "Claimed" | "Submitted" | "Paying" | "Paid" | "Closed";
+export type BountyStatus =
+  | "Open"
+  | "Claimed"
+  | "Submitted"
+  | "Paying"
+  | "Paid"
+  | "Closed"
+  | "Retracted";
 
 export interface Bounty {
   title: string;
@@ -104,4 +111,5 @@ export const statusText: Record<BountyStatus, string> = {
   Paying: "Payout pending",
   Paid: "Paid",
   Closed: "Closed",
+  Retracted: "Retracted by the DAO",
 };

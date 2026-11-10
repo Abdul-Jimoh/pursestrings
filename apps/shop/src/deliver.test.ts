@@ -48,17 +48,25 @@ describe("delivery", () => {
   it("checks paid orders, delivers them with a receipt and keeps the report", async () => {
     const delivered: [number, string][] = [];
     const shop = {
-      async recentOrders() {
-        return [
-          [7, order("Paid", "check:circ1e.testnet")],
-          [6, order("Delivered", "check:alice.testnet")],
-        ];
+      async view() {
+        return 8;
+      },
+      async recentOrders(_limit: number, before: number) {
+        return before === 8
+          ? [
+              [7, order("Paid", "check:circ1e.testnet")],
+              [6, order("Delivered", "check:alice.testnet")],
+            ]
+          : [];
       },
     } as unknown as Pursestrings;
+    let up = false;
     const agent = {
       async deliver(id: number, receipt: string) {
         delivered.push([id, receipt]);
-        return { ok: true, value: undefined, logs: [], txHash: "DTX" };
+        return up
+          ? { ok: true, value: undefined, logs: [], txHash: "DTX" }
+          : { ok: false, error: "rpc down", logs: [] };
       },
     } as unknown as Agent;
     const broken: Chat = {
@@ -66,23 +74,31 @@ describe("delivery", () => {
         throw new Error("model down");
       },
     };
-    const reports = new Reports(join(mkdtempSync(join(tmpdir(), "shop-")), "reports.jsonl"));
-    const done = await deliverPaid({
-      shop,
-      agent,
-      model: broken,
-      reports,
-      sources: {
-        nearRpc: "https://rpc",
-        nearTx: "https://tx",
-        blockscout: "https://bs",
-        known: ["circle.testnet"],
-        fetch: (async () => new Response("{}", { status: 404 })) as typeof fetch,
-      },
-      log: () => {},
-    });
-    expect(done).toEqual([7]);
-    expect(delivered[0]?.[1]).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const file = join(mkdtempSync(join(tmpdir(), "shop-")), "reports.jsonl");
+    const reports = new Reports(file);
+    const run = () =>
+      deliverPaid({
+        shop,
+        agent,
+        model: broken,
+        reports,
+        sources: {
+          nearRpc: "https://rpc",
+          nearTx: "https://tx",
+          blockscout: "https://bs",
+          known: ["circle.testnet"],
+          fetch: (async () => new Response("{}", { status: 404 })) as typeof fetch,
+        },
+        log: () => {},
+      });
+    expect(await run()).toEqual([]);
+    expect(new Reports(file).get(7)?.text, "kept before the deliver call").toContain(
+      "circle.testnet",
+    );
+    up = true;
+    expect(await run()).toEqual([7]);
+    expect(delivered[1]?.[1], "the retry delivers the same report").toBe(delivered[0]?.[1]);
+    expect(delivered[1]?.[1]).toMatch(/^sha256:[0-9a-f]{64}$/);
     const r = reports.get(7);
     expect(r?.verdict.level).toBe("do not pay");
     expect(r?.text).toContain("circle.testnet");

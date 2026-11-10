@@ -64,7 +64,12 @@ afterEach(() => {
   for (const s of servers.splice(0)) s.close();
 });
 
-async function start(decision: unknown, perHour = 2, origins?: string[]) {
+async function start(
+  decision: unknown,
+  perHour = 2,
+  origins?: string[],
+  extra: Partial<Parameters<typeof rangeServer>[0]> = {},
+) {
   const dir = await import("node:fs").then((fs) =>
     fs.mkdtempSync(`${process.env.TMPDIR ?? "/tmp"}/range-`),
   );
@@ -80,6 +85,7 @@ async function start(decision: unknown, perHour = 2, origins?: string[]) {
     },
     target: { account: "range.testnet", explorer: "x" },
     ...(origins ? { origins } : {}),
+    ...extra,
   });
   await new Promise<void>((r) => server.listen(0, r));
   servers.push(server);
@@ -193,6 +199,35 @@ describe("range", () => {
       hallOfFame: unknown[];
     };
     expect(log.hallOfFame).toHaveLength(1);
+  });
+
+  it("forgets expired sign-in nonces and caps the ones in progress", async () => {
+    let t = 0;
+    const r = await start({ Approved: { req_id: 0 } }, 2, undefined, {
+      maxPendingSignIns: 2,
+      now: () => t,
+    });
+    expect((await r.post("/api/nonce", {})).status).toBe(200);
+    expect((await r.post("/api/nonce", {})).status).toBe(200);
+    expect((await r.post("/api/nonce", {})).status).toBe(503);
+    t += 5 * 60_000 + 1;
+    expect((await r.post("/api/nonce", {})).status).toBe(200);
+  });
+
+  it("tells the caller about a bad request but not about a server fault", async () => {
+    const r = await start({ Approved: { req_id: 0 } }, 2, undefined, {
+      routes: [
+        async () => {
+          throw new Error("secret internals");
+        },
+      ],
+    });
+    const res = await fetch(`${r.base}/api/session`, { method: "POST", body: "{nope" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "the body isn't JSON" });
+    const other = await fetch(`${r.base}/api/anything`);
+    expect(other.status).toBe(500);
+    expect(JSON.stringify(await other.json())).not.toContain("secret");
   });
 
   it("rate-limits accounts and caps prompt length", async () => {

@@ -48,7 +48,8 @@ export type DenyReason =
   | { Cooldown: { retry_at: number } }
   | { Velocity: { retry_after_s: number } }
   | { OverWindow: { period_s: number; remaining: U128 } }
-  | { OverGroupWindow: { group: string; period_s: number; remaining: U128 } };
+  | { OverGroupWindow: { group: string; period_s: number; remaining: U128 } }
+  | { HeldForOthers: { spendable: U128 } };
 
 export type Decision =
   | { Approved: { req_id: number } }
@@ -154,7 +155,14 @@ export interface Order {
   receipt: string | null;
 }
 
-export type BountyStatus = "Open" | "Claimed" | "Submitted" | "Paying" | "Paid" | "Closed";
+export type BountyStatus =
+  | "Open"
+  | "Claimed"
+  | "Submitted"
+  | "Paying"
+  | "Paid"
+  | "Closed"
+  | "Retracted";
 
 export interface Bounty {
   title: string;

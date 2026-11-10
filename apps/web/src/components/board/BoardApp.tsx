@@ -34,6 +34,7 @@ const statusTone: Record<Bounty["status"], string> = {
   Paying: "text-wait",
   Paid: "text-paid",
   Closed: "text-dim-ink",
+  Retracted: "text-dim-ink",
 };
 
 export function BoardApp() {
@@ -130,7 +131,8 @@ export function BoardApp() {
     },
   ];
 
-  const finished = (b: Bounty) => b.status === "Paid" || b.status === "Closed";
+  const finished = (b: Bounty) =>
+    b.status === "Paid" || b.status === "Closed" || b.status === "Retracted";
   const live = board?.bounties.filter((x) => !finished(x.bounty)) ?? [];
   const done = board?.bounties.filter((x) => finished(x.bounty)) ?? [];
   const card = ({ id, bounty, request }: NonNullable<typeof board>["bounties"][number]) => (

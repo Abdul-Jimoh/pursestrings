@@ -13,6 +13,39 @@ const PAYOUT_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 /// keep a compromised agent key from filling storage.
 pub const MAX_OPEN_QUOTES: u32 = 64;
 const MAX_PAGE: u32 = 100;
+/// Raw storage key, outside the contract struct, so accounts created before it existed can
+/// migrate without a state rewrite.
+const OWED_NEAR: &[u8] = b"owed_near";
+
+/// NEAR the account holds for others: payments for orders not yet delivered and split shares
+/// that failed to pay out. Withdrawals and spends can't touch it.
+fn held_near() -> u128 {
+    env::storage_read(OWED_NEAR).map_or(0, |b| {
+        u128::from_le_bytes(b.try_into().unwrap_or_else(|_| env::abort()))
+    })
+}
+
+/// Saturating, because orders paid before the account tracked this were never added.
+fn owe_near(asset: &Asset, add: u128, sub: u128) {
+    if *asset != Asset::Near {
+        return;
+    }
+    let v = held_near().saturating_add(add).saturating_sub(sub);
+    if v == 0 {
+        env::storage_remove(OWED_NEAR);
+    } else {
+        env::storage_write(OWED_NEAR, &v.to_le_bytes());
+    }
+}
+
+/// What the account can send without dipping into its storage stake or what it owes.
+pub fn spendable_near() -> u128 {
+    let stake = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
+    env::account_balance()
+        .as_yoctonear()
+        .saturating_sub(stake)
+        .saturating_sub(held_near())
+}
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,8 +212,8 @@ impl Pursestrings {
         decision
     }
 
-    /// NEP-141 payment: `msg` is the order id. An empty `msg` is a plain deposit. Anything
-    /// that doesn't pay an open quote exactly is sent back in full.
+    /// An empty `msg` is a plain deposit. Anything else is sent back in full: the shop sells
+    /// in NEAR, where the contract can see its own balance and keep buyers' payments apart.
     pub fn ft_on_transfer(
         &mut self,
         sender_id: AccountId,
@@ -190,30 +223,13 @@ impl Pursestrings {
         if msg.is_empty() {
             return PromiseOrValue::Value(U128(0));
         }
-        let token = env::predecessor_account_id();
-        let asset = Asset::Nep141 { token };
-        match msg
-            .parse::<u64>()
-            .map_err(|_| "msg must be an order id")
-            .and_then(|id| {
-                self.check_payment(id, &asset, &sender_id, amount.0)
-                    .map(|_| id)
-            }) {
-            Ok(order_id) => {
-                let price = self.orders.get(&order_id).expect("checked").price.0;
-                self.settle_sale(order_id, sender_id, amount.0 - price);
-                PromiseOrValue::Value(U128(amount.0 - price))
-            }
-            Err(reason) => {
-                Event::PaymentRefused {
-                    payer: sender_id,
-                    msg,
-                    reason: reason.to_string(),
-                }
-                .emit();
-                PromiseOrValue::Value(amount)
-            }
+        Event::PaymentRefused {
+            payer: sender_id,
+            msg,
+            reason: "the shop sells in NEAR only".to_string(),
         }
+        .emit();
+        PromiseOrValue::Value(amount)
     }
 
     /// NEAR payment for a quote. A deposit that doesn't pay it panics, which returns it.
@@ -235,9 +251,12 @@ impl Pursestrings {
     }
 
     /// The agent records what it delivered, such as a hash or a link, and only then is the
-    /// payment split.
+    /// payment split. The contract can't check the receipt: holding the payment protects a
+    /// buyer from an agent that never delivers, not from one that lies. Refused while frozen,
+    /// so a stolen agent key can't mark orders delivered and end the buyers' reclaim.
     pub fn deliver(&mut self, order_id: u64, receipt: String) {
         self.assert_agent();
+        require!(!self.policy.frozen, "frozen");
         require!(receipt.len() <= MAX_PURPOSE_BYTES, "receipt too long");
         let (shares, kept) = {
             let order = self.orders.get(&order_id).expect("unknown order");
@@ -245,10 +264,12 @@ impl Pursestrings {
             split(&self.policy, order.held.0)
         };
         let order = self.orders.get_mut(&order_id).expect("unknown order");
+        let paid = order.held.0;
         order.status = OrderStatus::Delivered;
         order.receipt = Some(receipt.clone());
         order.held = U128(kept);
         let asset = order.asset.clone();
+        owe_near(&asset, 0, paid);
         Event::Delivered {
             order_id,
             receipt,
@@ -344,6 +365,7 @@ impl Pursestrings {
     pub fn retry_payout(&mut self, account: AccountId, asset: Asset) {
         let key = (account.clone(), asset.clone());
         let amount = self.unpaid.remove(&key).expect("nothing owed");
+        owe_near(&asset, 0, amount.0);
         self.pay_share(None, account, asset, amount);
     }
 
@@ -360,6 +382,7 @@ impl Pursestrings {
             let key = (account.clone(), asset.clone());
             let owed = self.unpaid.get(&key).map_or(0, |a| a.0);
             self.unpaid.insert(key, U128(owed + amount.0));
+            owe_near(&asset, amount.0, 0);
         }
         Event::Payout {
             order_id,
@@ -389,6 +412,9 @@ impl Pursestrings {
         o.held = U128(o.held.0 + amount.0);
         o.status = status;
         let asset = o.asset.clone();
+        if status == OrderStatus::Paid {
+            owe_near(&asset, amount.0, 0);
+        }
         if let Some(bucket) = bucket
             && let Some(w) = self.policy.refund_limit(&asset)
         {
@@ -421,6 +447,11 @@ impl Pursestrings {
             .collect()
     }
 
+    /// NEAR held for buyers and for split shares still to pay out.
+    pub fn owed_near(&self) -> U128 {
+        U128(held_near())
+    }
+
     pub fn unpaid(&self, account: AccountId, asset: Asset) -> U128 {
         self.unpaid
             .get(&(account, asset))
@@ -430,7 +461,7 @@ impl Pursestrings {
 }
 
 impl Pursestrings {
-    fn check_payment(
+    pub(crate) fn check_payment(
         &self,
         order_id: u64,
         asset: &Asset,
@@ -509,6 +540,7 @@ impl Pursestrings {
         o.deliver_by = Some(deliver_by);
         o.held = o.price;
         let (asset, price) = (o.asset.clone(), o.price);
+        owe_near(&asset, price.0, 0);
         self.open_quotes -= 1;
         Event::Sale {
             order_id,
@@ -530,6 +562,9 @@ impl Pursestrings {
         o.refunded = U128(o.refunded.0 + amount.0);
         if o.status == OrderStatus::Paid && o.held.0 == 0 {
             o.status = OrderStatus::Refunded;
+        }
+        if status == OrderStatus::Paid {
+            owe_near(&order.asset, 0, amount.0);
         }
         let payer = order.payer.clone().expect("paid");
         self.transfer(
@@ -575,14 +610,10 @@ mod tests {
         "buyer.near".parse().unwrap()
     }
 
-    fn token() -> AccountId {
-        "usdc.test.near".parse().unwrap()
-    }
-
     fn shop() -> Pursestrings {
         let mut p = base_policy();
         p.floors.push(PriceFloor {
-            asset: usdc(),
+            asset: Asset::Near,
             min: U128(2_000_000),
         });
         p.split = vec![
@@ -596,7 +627,7 @@ mod tests {
             },
         ];
         p.refund_limits.push(RefundLimit {
-            asset: usdc(),
+            asset: Asset::Near,
             window: WindowLimit {
                 period_s: 86_400,
                 limit: U128(300_000),
@@ -605,27 +636,31 @@ mod tests {
         contract(p)
     }
 
-    fn from_token(now_s: u64) {
+    fn quote(c: &mut Pursestrings, price: u128) -> QuoteDecision {
+        as_agent(1_000);
+        c.quote(Some(buyer()), Asset::Near, U128(price), "report".into())
+    }
+
+    fn fails(f: impl FnOnce()) -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err()
+    }
+
+    /// Pays `order` with `amount` yoctoNEAR from `who`; false if the payment was refused and
+    /// so returned.
+    fn pay_as(c: &mut Pursestrings, who: &str, amount: u128, order: u64, now_s: u64) -> bool {
         testing_env!(
             VMContextBuilder::new()
                 .current_account_id("purse.near".parse().unwrap())
-                .predecessor_account_id(token())
+                .predecessor_account_id(who.parse().unwrap())
+                .attached_deposit(NearToken::from_yoctonear(amount))
                 .block_timestamp(now_s * 1_000_000_000)
                 .build()
         );
+        !fails(|| c.pay(order))
     }
 
-    fn quote(c: &mut Pursestrings, price: u128) -> QuoteDecision {
-        as_agent(1_000);
-        c.quote(Some(buyer()), usdc(), U128(price), "report".into())
-    }
-
-    fn pay(c: &mut Pursestrings, amount: u128, msg: &str, now_s: u64) -> u128 {
-        from_token(now_s);
-        match c.ft_on_transfer(buyer(), U128(amount), msg.into()) {
-            PromiseOrValue::Value(v) => v.0,
-            PromiseOrValue::Promise(_) => unreachable!(),
-        }
+    fn pay(c: &mut Pursestrings, amount: u128, order: u64, now_s: u64) -> bool {
+        pay_as(c, "buyer.near", amount, order, now_s)
     }
 
     #[test]
@@ -644,9 +679,9 @@ mod tests {
             QuoteDecision::Quoted { order_id: 0, .. }
         ));
         as_agent(1_000);
-        let near = c.quote(None, Asset::Near, U128(1), "report".into());
+        let token = c.quote(None, usdc(), U128(1), "report".into());
         assert_eq!(
-            near,
+            token,
             QuoteDecision::Denied {
                 reason: QuoteDenial::NotForSale
             }
@@ -664,14 +699,17 @@ mod tests {
     fn a_payment_is_held_until_delivery_then_split() {
         let mut c = shop();
         quote(&mut c, 2_500_000);
-        assert_eq!(pay(&mut c, 2_600_000, "0", 1_010), 100_000, "change back");
+        assert!(
+            pay(&mut c, 2_600_000, 0, 1_010),
+            "overpaid: change goes back"
+        );
         let o = c.order(0).unwrap();
         assert_eq!(o.status, OrderStatus::Paid);
         assert_eq!(o.payer, Some(buyer()));
         assert_eq!(o.held, U128(2_500_000), "nothing shared before delivery");
         assert_eq!(o.deliver_by, Some(1_010 + 600));
         assert_eq!(c.open_quotes, 0);
-        assert_eq!(pay(&mut c, 2_500_000, "0", 1_020), 2_500_000, "paid twice");
+        assert!(!pay(&mut c, 2_500_000, 0, 1_020), "paid twice");
         as_agent(1_030);
         c.deliver(0, "sha256:abc".into());
         let o = c.order(0).unwrap();
@@ -680,10 +718,77 @@ mod tests {
     }
 
     #[test]
+    fn held_near_is_out_of_reach_until_delivery() {
+        let mut c = shop();
+        c.policy.assets.push(crate::policy::AssetRule {
+            asset: Asset::Near,
+            per_tx_cap: U128(u128::MAX),
+            windows: vec![],
+            cosign_above: None,
+            risk_check_above: None,
+        });
+        c.policy.recipients.push(crate::types::Recipient::Near {
+            account: "vendor.near".parse().unwrap(),
+        });
+        quote(&mut c, 2_500_000);
+        pay(&mut c, 2_500_000, 0, 1_010);
+        assert_eq!(c.owed_near(), U128(2_500_000));
+        testing_env!(
+            VMContextBuilder::new()
+                .current_account_id("purse.near".parse().unwrap())
+                .predecessor_account_id("owner.near".parse().unwrap())
+                .attached_deposit(NearToken::from_yoctonear(1))
+                .account_balance(NearToken::from_near(10))
+                .block_timestamp(1_020 * 1_000_000_000)
+                .build()
+        );
+        let spendable = super::spendable_near();
+        let stake = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
+        assert_eq!(
+            spendable,
+            env::account_balance().as_yoctonear() - stake - 2_500_000
+        );
+        assert!(
+            fails(|| drop(c.withdraw(Asset::Near, U128(spendable + 1)))),
+            "the owner can't take it"
+        );
+        drop(c.withdraw(Asset::Near, U128(spendable)));
+        as_agent(1_030);
+        let spend = |amount: u128| crate::types::SpendRequest {
+            asset: Asset::Near,
+            amount: U128(amount),
+            dest: crate::types::Dest::Near {
+                account: "vendor.near".parse().unwrap(),
+            },
+            purpose: "costs".into(),
+            idempotency_key: format!("k{amount}"),
+            bounty: None,
+        };
+        let need = super::spendable_near() + 1;
+        assert!(
+            matches!(
+                c.request_spend(spend(need)),
+                crate::types::Decision::Denied {
+                    reason: crate::types::DenyReason::HeldForOthers { .. }
+                }
+            ),
+            "nor can the agent"
+        );
+        c.policy.frozen = true;
+        assert!(
+            fails(|| c.deliver(0, "junk".into())),
+            "a stolen key can't deliver while frozen"
+        );
+        c.policy.frozen = false;
+        c.deliver(0, "sha256:abc".into());
+        assert_eq!(c.owed_near(), U128(0), "delivered: the split is paid out");
+    }
+
+    #[test]
     fn the_buyer_takes_an_undelivered_payment_back() {
         let mut c = shop();
         quote(&mut c, 2_000_000);
-        pay(&mut c, 2_000_000, "0", 1_010);
+        pay(&mut c, 2_000_000, 0, 1_010);
         let reclaim = |c: &mut Pursestrings, who: &str, now_s: u64| {
             testing_env!(
                 VMContextBuilder::new()
@@ -692,7 +797,7 @@ mod tests {
                     .block_timestamp(now_s * 1_000_000_000)
                     .build()
             );
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.reclaim(0))).is_ok()
+            !fails(|| c.reclaim(0))
         };
         assert!(
             !reclaim(&mut c, "buyer.near", 1_100),
@@ -704,39 +809,46 @@ mod tests {
         let o = c.order(0).unwrap();
         assert_eq!(o.status, OrderStatus::Refunded);
         assert_eq!((o.held, o.refunded), (U128(0), U128(2_000_000)));
+        assert_eq!(c.owed_near(), U128(0));
+        c.policy.frozen = false;
         as_agent(1_800);
-        let r =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.deliver(0, "late".into())));
-        assert!(r.is_err(), "nothing left to deliver against");
+        assert!(
+            fails(|| c.deliver(0, "late".into())),
+            "nothing left to deliver against"
+        );
     }
 
     #[test]
     fn bad_payments_are_returned_in_full() {
         let mut c = shop();
         quote(&mut c, 2_000_000);
-        assert_eq!(pay(&mut c, 1_999_999, "0", 1_010), 1_999_999, "short");
-        assert_eq!(
-            pay(&mut c, 2_000_000, "9", 1_010),
-            2_000_000,
-            "unknown order"
+        assert!(!pay(&mut c, 1_999_999, 0, 1_010), "short");
+        assert!(!pay(&mut c, 2_000_000, 9, 1_010), "unknown order");
+        assert!(
+            !pay_as(&mut c, "other.near", 2_000_000, 0, 1_010),
+            "someone else's quote"
         );
-        assert_eq!(pay(&mut c, 2_000_000, "x", 1_010), 2_000_000, "bad msg");
-        from_token(1_010);
-        let other: AccountId = "other.near".parse().unwrap();
-        assert!(matches!(
-            c.ft_on_transfer(other, U128(2_000_000), "0".into()),
-            PromiseOrValue::Value(U128(2_000_000))
-        ));
-        assert_eq!(
-            pay(&mut c, 2_000_000, "0", 1_000 + 3_600),
-            2_000_000,
-            "expired"
-        );
+        assert!(!pay(&mut c, 2_000_000, 0, 1_000 + 3_600), "expired");
         c.policy.frozen = true;
-        assert_eq!(pay(&mut c, 2_000_000, "0", 1_010), 2_000_000, "frozen");
+        assert!(!pay(&mut c, 2_000_000, 0, 1_010), "frozen");
         c.policy.frozen = false;
-        assert_eq!(pay(&mut c, 2_000_000, "0", 1_010), 0);
-        assert_eq!(pay(&mut c, 5, "", 1_010), 0, "a plain deposit is kept");
+        assert!(pay(&mut c, 2_000_000, 0, 1_010));
+        testing_env!(
+            VMContextBuilder::new()
+                .current_account_id("purse.near".parse().unwrap())
+                .predecessor_account_id("usdc.test.near".parse().unwrap())
+                .build()
+        );
+        let refund = |c: &mut Pursestrings, msg: &str| match c.ft_on_transfer(
+            buyer(),
+            U128(5),
+            msg.into(),
+        ) {
+            PromiseOrValue::Value(v) => v.0,
+            PromiseOrValue::Promise(_) => unreachable!(),
+        };
+        assert_eq!(refund(&mut c, "0"), 5, "the shop sells in NEAR only");
+        assert_eq!(refund(&mut c, ""), 0, "a plain token deposit is kept");
     }
 
     #[test]
@@ -744,7 +856,7 @@ mod tests {
         let mut c = shop();
         c.policy.refund_limits[0].window.limit = U128(2_100_000);
         quote(&mut c, 2_000_000);
-        pay(&mut c, 2_000_000, "0", 1_010);
+        pay(&mut c, 2_000_000, 0, 1_010);
         as_agent(1_020);
         assert_eq!(
             c.refund(0, U128(1_900_000), "a discount".into()),
@@ -762,7 +874,7 @@ mod tests {
         );
         assert_eq!(c.order(0).unwrap().status, OrderStatus::Refunded);
         quote(&mut c, 2_000_000);
-        pay(&mut c, 2_000_000, "1", 1_030);
+        pay(&mut c, 2_000_000, 1, 1_030);
         as_agent(1_040);
         c.deliver(1, "sha256:def".into());
         assert_eq!(

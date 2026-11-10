@@ -46,6 +46,9 @@ export function explainDenial(reason: DenyReason, fmt: FormatAmount = (a) => a):
     const w = reason.OverWindow;
     return `Over this asset's budget per ${duration(w.period_s)}; ${fmt(w.remaining)} left.`;
   }
+  if ("HeldForOthers" in reason) {
+    return `That NEAR is held for buyers' undelivered orders or unpaid shares; ${fmt(reason.HeldForOthers.spendable)} can be spent.`;
+  }
   const g = reason.OverGroupWindow;
   return `Over the shared "${g.group}" budget per ${duration(g.period_s)}; ${fmt(g.remaining, g.group)} left across every chain in it.`;
 }

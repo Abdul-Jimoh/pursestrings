@@ -7,6 +7,11 @@ use crate::{Pursestrings, PursestringsExt, now_s};
 
 const MAX_PAGE: u32 = 100;
 
+/// Raw storage, outside the contract struct: the bounty each account last claimed.
+fn claim_key(who: &AccountId) -> Vec<u8> {
+    [b"claim:".as_slice(), who.as_bytes()].concat()
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BountyStatus {
@@ -17,6 +22,9 @@ pub enum BountyStatus {
     Paying,
     Paid,
     Closed,
+    /// The owner took a paid report back, for example an innocent address: it leaves the scam
+    /// list and the claimant loses the point it earned.
+    Retracted,
 }
 
 #[near(serializers = [borsh, json])]
@@ -83,10 +91,23 @@ impl Pursestrings {
         assert_one_yocto();
         let who = env::predecessor_account_id();
         require!(who != env::current_account_id(), "the account can't claim");
+        let key = claim_key(&who);
+        let last = env::storage_read(&key)
+            .and_then(|b| b.try_into().ok())
+            .map(u64::from_le_bytes);
+        let busy = last.and_then(|l| self.bounties.get(&l)).is_some_and(|l| {
+            l.claimant.as_ref() == Some(&who)
+                && matches!(
+                    l.status,
+                    BountyStatus::Claimed | BountyStatus::Submitted | BountyStatus::Paying
+                )
+        });
+        require!(!busy, "finish or give up your current claim first");
         let b = self.bounties.get_mut(&id).expect("unknown bounty");
         require!(b.status == BountyStatus::Open, "not open");
         b.status = BountyStatus::Claimed;
         b.claimant = Some(who.clone());
+        env::storage_write(&key, &id.to_le_bytes());
         self.bounty_event(id, BountyStatus::Claimed, who);
     }
 
@@ -142,6 +163,23 @@ impl Pursestrings {
         self.bounty_event(id, BountyStatus::Closed, env::predecessor_account_id());
     }
 
+    /// Owner only, so with a DAO owner it takes a vote. The payout isn't clawed back.
+    #[payable]
+    pub fn retract_bounty(&mut self, id: u64) {
+        self.assert_owner();
+        let b = self.bounties.get_mut(&id).expect("unknown bounty");
+        require!(b.status == BountyStatus::Paid, "only a paid bounty");
+        b.status = BountyStatus::Retracted;
+        let claimant = b.claimant.clone().expect("a paid bounty has a claimant");
+        if let Some(rec) = self.reputation.get_mut(&claimant)
+            && let Some(i) = rec.bounties.iter().position(|&x| x == id)
+        {
+            rec.bounties.remove(i);
+            rec.points -= 1;
+        }
+        self.bounty_event(id, BountyStatus::Retracted, env::predecessor_account_id());
+    }
+
     pub fn bounty(&self, id: u64) -> Option<Bounty> {
         self.bounties.get(&id).cloned()
     }
@@ -186,15 +224,23 @@ impl Pursestrings {
         req: &SpendRequest,
     ) -> Result<(u128, u128), DenyReason> {
         let b = self.bounties.get(&id).ok_or(DenyReason::BountyMismatch)?;
+        if b.status != BountyStatus::Submitted {
+            return Err(DenyReason::BountyMismatch);
+        }
+        self.trust_limits(b, req)
+    }
+
+    /// The tiers for paying `b`'s claimant `req`, under the current policy and points.
+    pub(crate) fn trust_limits(
+        &self,
+        b: &Bounty,
+        req: &SpendRequest,
+    ) -> Result<(u128, u128), DenyReason> {
         let to_claimant = matches!(
             (&req.dest, &b.claimant),
             (Dest::Near { account }, Some(c)) if account == c
         );
-        if b.status != BountyStatus::Submitted
-            || b.asset != req.asset
-            || !to_claimant
-            || req.amount.0 > b.reward.0
-        {
+        if b.asset != req.asset || !to_claimant || req.amount.0 > b.reward.0 {
             return Err(DenyReason::BountyMismatch);
         }
         let rule = self
@@ -215,8 +261,9 @@ impl Pursestrings {
         b.req_id = Some(req_id);
     }
 
-    /// A paid bounty earns its claimant a point; a failed or refused payout reopens review.
-    pub(crate) fn bounty_settled(&mut self, id: u64, paid: bool) {
+    /// A bounty paid in full earns its claimant a point, so tiny payouts can't farm trust; a
+    /// failed or refused payout reopens review.
+    pub(crate) fn bounty_settled(&mut self, id: u64, paid: Option<u128>) {
         let Some(b) = self.bounties.get_mut(&id) else {
             return;
         };
@@ -224,8 +271,12 @@ impl Pursestrings {
             return;
         }
         let claimant = b.claimant.clone().expect("a paying bounty has a claimant");
-        if paid {
+        if let Some(amount) = paid {
             b.status = BountyStatus::Paid;
+            if amount < b.reward.0 {
+                self.bounty_event(id, BountyStatus::Paid, claimant);
+                return;
+            }
             let mut rec = self.reputation.get(&claimant).cloned().unwrap_or_default();
             rec.points += 1;
             rec.bounties.push(id);
@@ -302,8 +353,12 @@ mod tests {
         contract(p)
     }
 
+    fn owner() -> AccountId {
+        "owner.near".parse().unwrap()
+    }
+
     fn submitted(c: &mut Pursestrings, reward: u128) -> u64 {
-        call_as(council());
+        call_as(owner());
         let id = c.post_bounty("fix the docs".into(), usdc(), U128(reward));
         call_as(alice());
         c.claim_bounty(id);
@@ -382,6 +437,7 @@ mod tests {
             c.request_spend(payout(small, alice(), 10)),
             Decision::Approved { req_id: 0 }
         );
+        c.finish_execution(0, true);
         let large = submitted(&mut c, 40);
         as_agent(1_000);
         assert!(matches!(
@@ -422,6 +478,86 @@ mod tests {
             },
             "not claimed and submitted"
         );
+    }
+
+    fn fails(f: impl FnOnce()) -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err()
+    }
+
+    #[test]
+    fn a_partial_payout_earns_no_point() {
+        let mut c = board();
+        let id = submitted(&mut c, 15);
+        as_agent(1_000);
+        c.request_spend(payout(id, alice(), 1));
+        call_as(council());
+        c.council_approve(0);
+        c.finish_execution(0, true);
+        assert_eq!(c.bounty(id).unwrap().status, BountyStatus::Paid);
+        assert_eq!(c.record(alice()), Record::default(), "1 of 15 paid");
+    }
+
+    #[test]
+    fn a_council_member_cannot_approve_on_a_bounty_they_posted() {
+        let mut c = board();
+        call_as(council());
+        let id = c.post_bounty("fix the docs".into(), usdc(), U128(15));
+        call_as(alice());
+        c.claim_bounty(id);
+        c.submit_bounty(id, "https://example.com/pr/1".into());
+        as_agent(1_000);
+        c.request_spend(payout(id, alice(), 15));
+        call_as(council());
+        assert!(
+            fails(|| c.council_approve(0)),
+            "a second account of the poster's"
+        );
+    }
+
+    #[test]
+    fn council_approval_uses_the_tier_in_force_now() {
+        let mut c = board();
+        let id = submitted(&mut c, 15);
+        as_agent(1_000);
+        c.request_spend(payout(id, alice(), 15));
+        c.policy.trust[0].tiers[0].council_up_to = U128(10);
+        call_as(council());
+        assert!(fails(|| c.council_approve(0)), "the DAO lowered the tier");
+        c.policy.trust[0].tiers[0].council_up_to = U128(20);
+        c.policy.frozen = true;
+        assert!(fails(|| c.council_approve(0)), "frozen");
+    }
+
+    #[test]
+    fn the_owner_can_retract_a_paid_report_and_its_point() {
+        let mut c = board();
+        let id = submitted(&mut c, 15);
+        as_agent(1_000);
+        c.request_spend(payout(id, alice(), 15));
+        call_as(council());
+        c.council_approve(0);
+        c.finish_execution(0, true);
+        assert_eq!(c.record(alice()).points, 1);
+        assert!(fails(|| c.retract_bounty(id)), "council can't");
+        call_as(owner());
+        c.retract_bounty(id);
+        assert_eq!(c.bounty(id).unwrap().status, BountyStatus::Retracted);
+        assert_eq!(c.record(alice()), Record::default());
+        assert!(fails(|| c.retract_bounty(id)), "only once");
+    }
+
+    #[test]
+    fn one_open_claim_per_account() {
+        let mut c = board();
+        call_as(owner());
+        let a = c.post_bounty("a".into(), usdc(), U128(5));
+        let b = c.post_bounty("b".into(), usdc(), U128(5));
+        call_as(alice());
+        c.claim_bounty(a);
+        assert!(fails(|| c.claim_bounty(b)), "squatting a second bounty");
+        c.reopen_bounty(a);
+        c.claim_bounty(b);
+        assert_eq!(c.bounty(b).unwrap().claimant, Some(alice()));
     }
 
     #[test]

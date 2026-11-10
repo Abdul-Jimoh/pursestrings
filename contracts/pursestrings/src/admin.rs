@@ -66,12 +66,16 @@ impl Pursestrings {
     }
 
     /// Moves funds back to the owner, and only to the owner, so a mistaken or phished owner
-    /// signature can't send them anywhere else. Works while frozen. EVM funds leave through
-    /// spends.
+    /// signature can't send them anywhere else. Works while frozen. NEAR held for buyers or
+    /// unpaid split shares stays. EVM funds leave through spends.
     #[payable]
     pub fn withdraw(&mut self, asset: Asset, amount: U128) -> Promise {
         self.assert_owner();
         require!(amount.0 > 0, "amount must be positive");
+        require!(
+            asset != Asset::Near || amount.0 <= crate::sales::spendable_near(),
+            "that NEAR is held for buyers or unpaid shares"
+        );
         let owner = self.owner.clone();
         self.transfer(&asset, &owner, amount, "pursestrings:withdraw".to_string())
     }

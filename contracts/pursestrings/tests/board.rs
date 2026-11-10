@@ -26,15 +26,21 @@ async fn as_council(env: &Env, method: &str, args: Value) -> TestResult<Value> {
     Ok(res.assert_success().json().unwrap_or(Value::Null))
 }
 
+/// The DAO posts, so its council member is free to approve the payout: a council member can't
+/// approve one on a bounty they posted.
 async fn claimed(env: &Env, who: &AccountId, reward_milli: u128) -> TestResult<u64> {
-    let id = as_council(
-        env,
+    let id: u64 = env.view("next_bounty_id", json!({})).await?;
+    env.owner_call(
         "post_bounty",
         json!({ "title": "translate the docs", "asset": "Near", "reward": yocto(reward_milli) }),
     )
     .await?
-    .as_u64()
-    .expect("bounty id");
+    .assert_success();
+    assert!(
+        env.view::<Value>("bounty", json!({ "id": id }))
+            .await?
+            .is_object()
+    );
     env.call_as(who, "claim_bounty", json!({ "id": id }), 1)
         .await?
         .assert_success();
@@ -109,6 +115,7 @@ async fn a_dao_owned_board_pays_by_earned_trust() -> TestResult {
         "Approved",
         "one paid bounty earns auto-approval up to 0.3"
     );
+    settle(&env).await?;
 
     let big = claimed(&env, &alice, 1_200).await?;
     let d = env.spend(payout(big, &alice, 1_200)).await?;

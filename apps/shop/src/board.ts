@@ -26,7 +26,9 @@ export interface Review {
 }
 
 const WORK = /^scam:(\S+)\s+([\s\S]+)$/;
-const LINK = /https?:\/\/\S+/;
+/** A link anyone can open to see the address in a transaction; any other site proves nothing. */
+const EXPLORER_LINK =
+  /https:\/\/((testnet\.)?nearblocks\.io|explorer\.(testnet\.)?near\.org|(sepolia\.)?(basescan\.org|etherscan\.io)|[a-z0-9-]+\.blockscout\.com)\/\S+/i;
 
 export function parseWork(work: string): { address: string; evidence: string } | null {
   const m = WORK.exec(work.trim());
@@ -56,13 +58,13 @@ export function rules(
   const signals = [
     facts?.lookalikeOf ? `It imitates ${facts.lookalikeOf}.` : null,
     facts?.flaggedByExplorer ? "The block explorer flags it." : null,
-    LINK.test(evidence) ? "The evidence links to where it was used." : null,
+    EXPLORER_LINK.test(evidence) ? "The evidence links to a block explorer." : null,
   ].filter((s): s is string => s !== null);
   if (!signals.length)
     return {
       accepted: false,
       reasons: [
-        "Nothing backs the claim: it isn't a lookalike, the explorer doesn't flag it, and the evidence has no link.",
+        "Nothing backs the claim: it isn't a lookalike, the explorer doesn't flag it, and the evidence has no block explorer link.",
       ],
     };
   return { accepted: true, reasons: signals };
