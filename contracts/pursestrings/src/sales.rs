@@ -64,13 +64,64 @@ fn release(asset: &Asset, key: &[u8], amount: u128) {
     }
 }
 
-/// What the account can send without dipping into its storage stake or what it owes.
-pub fn spendable_near() -> u128 {
-    let stake = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
-    env::account_balance()
-        .as_yoctonear()
-        .saturating_sub(stake)
-        .saturating_sub(held_near())
+/// Worst-case storage of one order (two 256-byte strings, two account ids, the fixed fields
+/// and the trie's per-record overhead), rounded up.
+const ORDER_BYTES: u128 = 1_000;
+/// How far back `migrate` looks for paid orders the old code didn't track. Undelivered orders
+/// are recent, since the delivery window is short; the bound keeps `migrate` inside its 30 Tgas,
+/// and the upgrade script checks every order before proposing.
+const RECOUNT_ORDERS: u64 = 50;
+
+impl Pursestrings {
+    /// What the account can send without dipping into its storage stake, what it holds for
+    /// buyers and payees, the gas its agent keys may still burn (they sign as this account, so
+    /// their gas comes from its balance), or, if it sells, the stake its free quote slots could
+    /// take.
+    pub(crate) fn spendable_near(&self) -> u128 {
+        let byte = env::storage_byte_cost().as_yoctonear();
+        let stake = u128::from(env::storage_usage()) * byte;
+        let gas: u128 = self.agents.values().map(|a| a.allowance.0).sum();
+        let sells = self.policy.floor(&Asset::Near).is_some();
+        let quotes = u128::from(sells)
+            * u128::from(MAX_OPEN_QUOTES.saturating_sub(self.open_quotes))
+            * ORDER_BYTES
+            * byte;
+        env::account_balance()
+            .as_yoctonear()
+            .saturating_sub(stake + held_near() + gas + quotes)
+    }
+
+    /// Counts what the code before held-NEAR tracking left untracked: recent paid orders and
+    /// the split's unpaid shares. Only ever raises an entry to what's actually owed.
+    pub(crate) fn recount_held(&self) {
+        let mut added = 0;
+        let mut raise = |key: Vec<u8>, owed: u128| {
+            let have = read_u128(&key);
+            if owed > have {
+                write_u128(&key, owed);
+                added += owed - have;
+            }
+        };
+        let end = self.next_order_id;
+        for id in end.saturating_sub(RECOUNT_ORDERS)..end {
+            if let Some(o) = self.orders.get(&id)
+                && o.status == OrderStatus::Paid
+                && o.asset == Asset::Near
+            {
+                raise(order_key(id), o.held.0);
+            }
+        }
+        for s in &self.policy.split {
+            let key = (s.account.clone(), Asset::Near);
+            raise(
+                payee_key(&s.account),
+                self.unpaid.get(&key).map_or(0, |a| a.0),
+            );
+        }
+        if added > 0 {
+            write_u128(OWED_NEAR, held_near() + added);
+        }
+    }
 }
 
 #[near(serializers = [borsh, json])]
@@ -484,6 +535,11 @@ impl Pursestrings {
         U128(held_near())
     }
 
+    /// What the owner could withdraw, or an agent spend, right now.
+    pub fn spendable(&self) -> U128 {
+        U128(self.spendable_near())
+    }
+
     pub fn unpaid(&self, account: AccountId, asset: Asset) -> U128 {
         self.unpaid
             .get(&(account, asset))
@@ -544,10 +600,10 @@ impl Pursestrings {
         // then mustn't come out of what other buyers' orders hold.
         if order.status == OrderStatus::Delivered
             && order.asset == Asset::Near
-            && amount > spendable_near()
+            && amount > self.spendable_near()
         {
             return Some(RefundDenial::HeldForOthers {
-                spendable: U128(spendable_near()),
+                spendable: U128(self.spendable_near()),
             });
         }
         let Some(w) = self.policy.refund_limit(&order.asset) else {
@@ -784,11 +840,10 @@ mod tests {
                 .block_timestamp(1_020 * 1_000_000_000)
                 .build()
         );
-        let spendable = super::spendable_near();
-        let stake = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
+        let spendable = c.spendable_near();
         assert_eq!(
             spendable,
-            env::account_balance().as_yoctonear() - stake - 2_500_000
+            env::account_balance().as_yoctonear() - reserve(&c) - 2_500_000
         );
         assert!(
             fails(|| drop(c.withdraw(Asset::Near, U128(spendable + 1)))),
@@ -806,7 +861,7 @@ mod tests {
             idempotency_key: format!("k{amount}"),
             bounty: None,
         };
-        let need = super::spendable_near() + 1;
+        let need = c.spendable_near() + 1;
         assert!(
             matches!(
                 c.request_spend(spend(need)),
@@ -850,8 +905,71 @@ mod tests {
         );
     }
 
-    fn stake() -> u128 {
-        u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear()
+    /// The storage stake, the agents' gas allowances and the free quote slots' storage.
+    fn reserve(c: &Pursestrings) -> u128 {
+        let byte = env::storage_byte_cost().as_yoctonear();
+        let gas: u128 = c.agents.values().map(|a| a.allowance.0).sum();
+        u128::from(env::storage_usage()) * byte
+            + gas
+            + u128::from(MAX_OPEN_QUOTES - c.open_quotes) * ORDER_BYTES * byte
+    }
+
+    #[test]
+    fn agent_gas_and_free_quote_slots_are_set_aside() {
+        let mut c = shop();
+        at("owner.near", None, false);
+        let before = c.spendable_near();
+        let key: near_sdk::PublicKey = "ed25519:DcA2MzgpJbrUATQLLceocVckhhAqrkingax4oJ9kZ847"
+            .parse()
+            .unwrap();
+        drop(c.add_agent(key.clone(), U128(10u128.pow(24))));
+        assert_eq!(
+            before - c.spendable_near(),
+            10u128.pow(24),
+            "a new key's gas allowance is set aside: it signs as this account"
+        );
+        drop(c.revoke_agent(key));
+        assert_eq!(c.spendable_near(), before);
+        quote(&mut c, 2_000_000);
+        at("owner.near", None, false);
+        let slot = ORDER_BYTES * env::storage_byte_cost().as_yoctonear();
+        assert!(
+            c.spendable_near() + slot >= before,
+            "an open quote uses up one reserved slot's worth of stake"
+        );
+        let selling = c.spendable_near();
+        c.policy.floors.clear();
+        assert_eq!(
+            c.spendable_near() - selling,
+            u128::from(MAX_OPEN_QUOTES - c.open_quotes) * slot,
+            "an account that doesn't sell keeps no quote slots"
+        );
+    }
+
+    #[test]
+    fn migrating_counts_what_old_code_left_untracked() {
+        let mut c = shop();
+        quote(&mut c, 2_000_000);
+        pay(&mut c, 2_000_000, 0, 1_010);
+        let dao: AccountId = "dao.near".parse().unwrap();
+        c.unpaid.insert((dao.clone(), Asset::Near), U128(300_000));
+        env::storage_remove(&order_key(0));
+        env::storage_remove(OWED_NEAR);
+        assert_eq!(c.owed_near(), U128(0), "as the old code left it");
+        c.orders.flush();
+        c.unpaid.flush();
+        env::state_write(&c);
+        let mut c = Pursestrings::migrate();
+        assert_eq!(c.owed_near(), U128(2_300_000));
+        c.recount_held();
+        assert_eq!(
+            c.owed_near(),
+            U128(2_300_000),
+            "running it twice changes nothing"
+        );
+        at("anyone.near", None, false);
+        c.retry_payout(dao, Asset::Near);
+        assert_eq!(c.owed_near(), U128(2_000_000));
     }
 
     #[test]
@@ -944,7 +1062,7 @@ mod tests {
         pay(&mut c, 2_000_000, 0, 1_010);
         at("owner.near", None, false);
         // The owner's attached yoctoNEAR is part of the balance during the call.
-        let tight = stake() + 2_000_000 + 999_998;
+        let tight = reserve(&c) + 2_000_000 + 999_998;
         at("owner.near", Some(tight), false);
         assert!(
             fails(|| c.approve_request(0)),
@@ -964,7 +1082,7 @@ mod tests {
         quote(&mut c, 2_000_000);
         pay(&mut c, 2_000_000, 1, 1_030);
         at("purse.near", None, false);
-        let withdrawn = stake() + 2_000_000;
+        let withdrawn = reserve(&c) + 2_000_000;
         at("purse.near", Some(withdrawn), false);
         assert_eq!(
             c.refund(0, U128(250_000), "x".into()),

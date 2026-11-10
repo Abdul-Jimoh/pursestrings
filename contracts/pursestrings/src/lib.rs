@@ -170,11 +170,14 @@ impl Pursestrings {
     }
 
     /// Called by `apply_migration` in the same batch that deploys new code. This version's
-    /// state layout is the current one, so it reads the state back unchanged.
+    /// state layout is the current one, so it reads the state back unchanged, then counts any
+    /// paid order or unpaid share the old code didn't track as held.
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
-        env::state_read().expect("no state to migrate")
+        let c: Self = env::state_read().expect("no state to migrate");
+        c.recount_held();
+        c
     }
 
     pub fn owner(&self) -> AccountId {

@@ -165,6 +165,52 @@ async function nearQuery<T>(f: typeof fetch, rpc: string, params: Record<string,
 
 const NO_CODE = "11111111111111111111111111111111";
 
+const NEAR_TX =
+  /(?:^|\s)https:\/\/(?:testnet\.)?(?:nearblocks\.io|explorer\.(?:testnet\.)?near\.org)\/(?:txns|transactions)\/([1-9A-HJ-NP-Za-km-z]{43,44})\b/;
+const EVM_TX =
+  /(?:^|\s)https:\/\/(?:sepolia\.)?(?:basescan\.org|etherscan\.io|[a-z0-9-]+\.blockscout\.com)\/tx\/(0x[0-9a-fA-F]{64})\b/;
+
+/**
+ * Whether `evidence` links a transaction on a block explorer that involves `address`. NEAR
+ * transactions are looked up by hash in the transactions API, or else by RPC with the address
+ * or the reporter as the sender; EVM ones in Blockscout. Any address page or unrelated
+ * transaction proves nothing.
+ */
+export async function linkedTxInvolves(
+  evidence: string,
+  address: string,
+  reporter: string,
+  s: Omit<Sources, "scamList">,
+): Promise<boolean> {
+  const f = s.fetch ?? fetch;
+  const a = address.toLowerCase();
+  const mentions = (x: unknown) => x !== undefined && JSON.stringify(x).toLowerCase().includes(a);
+  const near = NEAR_TX.exec(evidence)?.[1];
+  if (near && chainOf(address) === "near") {
+    const indexed = await json<{ transactions?: unknown[] }>(f, `${s.nearTx}/v0/transactions`, {
+      tx_hashes: [near],
+    }).catch(() => undefined);
+    if (indexed?.transactions?.length) return mentions(indexed.transactions);
+    for (const sender of [address, reporter]) {
+      const out = await json<{ result?: unknown }>(f, s.nearRpc, {
+        jsonrpc: "2.0",
+        id: 0,
+        method: "tx",
+        params: { tx_hash: near, sender_account_id: sender },
+      }).catch(() => undefined);
+      if (out?.result) return mentions(out.result);
+    }
+    return false;
+  }
+  const evm = EVM_TX.exec(evidence)?.[1];
+  if (evm && chainOf(address) !== "near" && chainOf(address) !== null) {
+    return mentions(
+      await json(f, `${s.blockscout}/api/v2/transactions/${evm}`).catch(() => undefined),
+    );
+  }
+  return false;
+}
+
 export async function gather(target: string, s: Sources): Promise<Facts> {
   const f = s.fetch ?? fetch;
   const chain = chainOf(target);

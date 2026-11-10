@@ -1,7 +1,14 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Agent, Bounty, Decision, Pursestrings } from "@pursestrings/sdk";
-import { chainOf, type Facts, gather, type ScamEntry, type Sources } from "./check.ts";
+import {
+  chainOf,
+  type Facts,
+  gather,
+  linkedTxInvolves,
+  type ScamEntry,
+  type Sources,
+} from "./check.ts";
 import { scamListFrom } from "./deliver.ts";
 import type { Route } from "./routes.ts";
 import type { Chat } from "./seller.ts";
@@ -26,9 +33,6 @@ export interface Review {
 }
 
 const WORK = /^scam:(\S+)\s+([\s\S]+)$/;
-/** A link anyone can open to see the address in a transaction; any other site proves nothing. */
-const EXPLORER_LINK =
-  /(?:^|\s)https:\/\/((testnet\.)?nearblocks\.io|explorer\.(testnet\.)?near\.org|(sepolia\.)?(basescan\.org|etherscan\.io)|[a-z0-9-]+\.blockscout\.com)\/(txns?|address|accounts?)\/[A-Za-z0-9._-]+/i;
 
 export function parseWork(work: string): { address: string; evidence: string } | null {
   const m = WORK.exec(work.trim());
@@ -41,6 +45,8 @@ export function rules(
   facts: Facts | null,
   listed: readonly ScamEntry[],
   known: readonly string[],
+  /** Whether the evidence links a transaction that involves the address (`linkedTxInvolves`). */
+  linkedTx = false,
 ): { accepted: boolean; reasons: string[] } {
   const parsed = parseWork(work);
   if (!parsed)
@@ -58,13 +64,13 @@ export function rules(
   const signals = [
     facts?.lookalikeOf ? `It imitates ${facts.lookalikeOf}.` : null,
     facts?.flaggedByExplorer ? "The block explorer flags it." : null,
-    EXPLORER_LINK.test(evidence) ? "The evidence links to a block explorer." : null,
+    linkedTx ? "The linked transaction involves the address." : null,
   ].filter((s): s is string => s !== null);
   if (!signals.length)
     return {
       accepted: false,
       reasons: [
-        "Nothing backs the claim: it isn't a lookalike, the explorer doesn't flag it, and the evidence has no block explorer link.",
+        "Nothing backs the claim: it isn't a lookalike, the explorer doesn't flag it, and the evidence links no transaction involving the address.",
       ],
     };
   return { accepted: true, reasons: signals };
@@ -157,7 +163,13 @@ export async function reviewSubmitted(d: Reviewer): Promise<Review[]> {
             () => null,
           )
         : null;
-    const verdict = rules(b.work, facts, listed, d.sources.known);
+    const linked =
+      parsed && facts
+        ? await linkedTxInvolves(parsed.evidence, parsed.address, b.claimant, d.sources).catch(
+            () => false,
+          )
+        : false;
+    const verdict = rules(b.work, facts, listed, d.sources.known, linked);
     let review: Review = {
       bountyId: id,
       work: b.work,

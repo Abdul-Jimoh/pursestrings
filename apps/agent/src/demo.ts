@@ -499,11 +499,17 @@ console.log(
   `   owner of ${A.bounties}: ${await board.owner()}, a Sputnik DAO; council ${A.council}, ${A.steward}`,
 );
 
+/** A deposit `who` really sends `to`, linked as evidence: the bounty agent checks the link. */
+async function paidTo(who: typeof newcomer, to: string) {
+  const sent = await who.call("deposit", {}, { contractId: to, deposit: milli(10), tgas: 10n });
+  return `https://testnet.nearblocks.io/txns/${sent.txHash}`;
+}
+
 const scam = "drainer.sandbox";
 let b = await submitReport(
   newcomer,
   50,
-  `scam:${scam} took a deposit for a check and never delivered https://explorer.near.org/txns/9xQ`,
+  `scam:${scam} took a deposit for a check and never delivered ${await paidTo(newcomer, scam)}`,
 );
 see(
   !!b.decision && "NeedsCouncil" in b.decision,
@@ -537,7 +543,7 @@ see(
 b = await submitReport(
   steward,
   200,
-  "scam:checks-desk.sandbox sells fake checks https://explorer.near.org/txns/4kP",
+  `scam:checks-desk.sandbox sells fake checks ${await paidTo(steward, "checks-desk.sandbox")}`,
 );
 const own = b.decision && "NeedsCouncil" in b.decision ? b.decision.NeedsCouncil.req_id : -1;
 const self = await steward.councilApprove(own);

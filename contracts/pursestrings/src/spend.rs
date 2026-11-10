@@ -319,9 +319,9 @@ impl Pursestrings {
             });
         }
         check_dest(&self.policy, req, req.bounty.is_some())?;
-        if req.asset == Asset::Near && req.amount.0 > crate::sales::spendable_near() {
+        if req.asset == Asset::Near && req.amount.0 > self.spendable_near() {
             return Err(DenyReason::HeldForOthers {
-                spendable: U128(crate::sales::spendable_near()),
+                spendable: U128(self.spendable_near()),
             });
         }
         Ok(())
@@ -410,7 +410,7 @@ impl Pursestrings {
             return Err(DenyReason::IntentsKeyMissing);
         }
         if req.asset == Asset::Near {
-            let spendable = crate::sales::spendable_near();
+            let spendable = self.spendable_near();
             if amount > spendable {
                 return Err(DenyReason::HeldForOthers {
                     spendable: U128(spendable),

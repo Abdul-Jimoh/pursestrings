@@ -28,14 +28,17 @@ only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
 ([admin.rs:30](contracts/pursestrings/src/admin.rs#L30)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
-([lib.rs:315](contracts/pursestrings/src/lib.rs#L315)). The one selling method that pays anything out, `refund`, can only
+([lib.rs:318](contracts/pursestrings/src/lib.rs#L318)). The one selling method that pays anything out, `refund`, can only
 pay whoever paid that order, only within the owner's refund window, and only as all of the
 payment before delivery or from the part of the price the account kept after it
 ([sales.rs](contracts/pursestrings/src/sales.rs)). `deliver` is refused while the account is
 frozen, so a stolen agent key can't mark orders delivered and end the buyers' right to reclaim.
 NEAR held for undelivered orders or unpaid split shares, counted per order and per payee, is out
-of reach of agent spends, approvals, refunds after delivery and the owner's `withdraw` ([sales.rs:68](contracts/pursestrings/src/sales.rs#L68),
-[`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172)).
+of reach of agent spends, approvals, refunds after delivery and the owner's `withdraw`. The agent
+keys sign as the account, so their gas comes from its balance: their allowances are set aside
+too, as is the storage a shop's free quote slots could take. An upgrade from code that didn't
+track held NEAR counts recent paid orders and unpaid shares in `migrate` ([sales.rs:80](contracts/pursestrings/src/sales.rs#L80),
+[`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L176)).
 
 Test: [`inv1_agent_key_cannot_move_funds`](contracts/pursestrings/tests/invariants.rs#L37) checks
 the key's receiver, methods and allowance on-chain. It then has the agent try a raw transfer,

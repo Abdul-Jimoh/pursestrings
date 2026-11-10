@@ -310,7 +310,9 @@ async fn main() -> Result {
             Contract(factory.clone())
                 .call_function_raw("create", args?)
                 .transaction()
-                .deposit(NearToken::from_near(8))
+                // About 6 NEAR is the code's storage stake; the rest covers the agent key's
+                // 1 NEAR gas allowance, which the account sets aside, and the demo's payouts.
+                .deposit(NearToken::from_near(10))
                 .gas(NearGas::from_tgas(300))
                 .with_signer(owner, n.root.clone())
                 .send_to(&n.net)

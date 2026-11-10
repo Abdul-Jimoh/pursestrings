@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Agent, Bounty, Pursestrings, SpendRequest } from "@pursestrings/sdk";
 import { describe, expect, it } from "vitest";
 import { Reviews, reviewSubmitted, rules } from "./board.ts";
-import type { Facts } from "./check.ts";
+import { type Facts, linkedTxInvolves } from "./check.ts";
 import type { Chat } from "./seller.ts";
 
 const KNOWN = ["circle.testnet"];
@@ -60,13 +60,75 @@ describe("bounty review rules", () => {
         KNOWN,
       ),
     ).toEqual({ accepted: true, reasons: ["It imitates circle.testnet."] });
+    const drain = "scam:drain.testnet took a deposit https://testnet.nearblocks.io/txns/abc";
+    expect(rules(drain, facts(), [], KNOWN, true)).toEqual({
+      accepted: true,
+      reasons: ["The linked transaction involves the address."],
+    });
+    expect(rules(drain, facts(), [], KNOWN).accepted, "a link alone proves nothing").toBe(false);
+  });
+
+  it("checks that a linked transaction involves the reported address", async () => {
+    const HASH = "9xQd5Ux1bUxZtLjZGSWvuZJSxMJgv1vKbTVPXgJ5Rrqe";
+    const EVM = `0x${"ab".repeat(32)}`;
+    const calls: string[] = [];
+    const sources = (body: (url: string, req: Record<string, unknown>) => unknown) => ({
+      nearRpc: "https://rpc",
+      nearTx: "https://tx",
+      blockscout: "https://bs",
+      known: [],
+      fetch: (async (url: string, init?: { body?: string }) => {
+        calls.push(url);
+        const out = body(url, init?.body ? JSON.parse(init.body) : {});
+        return out === undefined
+          ? new Response("{}", { status: 404 })
+          : new Response(JSON.stringify(out));
+      }) as typeof fetch,
+    });
+    const indexed = sources((url) =>
+      url === "https://tx/v0/transactions"
+        ? { transactions: [{ transaction: { receiver_id: "drain.testnet" } }] }
+        : undefined,
+    );
+    const link = `https://testnet.nearblocks.io/txns/${HASH}`;
+    expect(await linkedTxInvolves(`see ${link}`, "drain.testnet", "me.testnet", indexed)).toBe(
+      true,
+    );
+    expect(await linkedTxInvolves(`see ${link}`, "other.testnet", "me.testnet", indexed)).toBe(
+      false,
+    );
+    calls.length = 0;
     expect(
-      rules(
-        "scam:drain.testnet took a deposit https://testnet.nearblocks.io/txns/abc",
-        facts(),
-        [],
-        KNOWN,
-      ).accepted,
+      await linkedTxInvolves(
+        "see https://testnet.nearblocks.io/address/drain.testnet",
+        "drain.testnet",
+        "me.testnet",
+        indexed,
+      ),
+      "an address page",
+    ).toBe(false);
+    expect(calls, "nothing to look up").toEqual([]);
+    const byRpc = sources((url, req) =>
+      url === "https://rpc" &&
+      (req.params as { sender_account_id: string }).sender_account_id === "me.testnet"
+        ? { result: { transaction: { signer_id: "me.testnet", receiver_id: "drain.testnet" } } }
+        : undefined,
+    );
+    expect(
+      await linkedTxInvolves(link, "drain.testnet", "me.testnet", byRpc),
+      "the reporter's own transaction, found by RPC",
+    ).toBe(true);
+    const poisoner = `0x${"Cd".repeat(20)}`;
+    const evm = sources((url) =>
+      url === `https://bs/api/v2/transactions/${EVM}` ? { to: { hash: poisoner } } : undefined,
+    );
+    expect(
+      await linkedTxInvolves(
+        `https://sepolia.basescan.org/tx/${EVM}`,
+        poisoner.toLowerCase(),
+        "me.testnet",
+        evm,
+      ),
     ).toBe(true);
   });
 
@@ -87,12 +149,6 @@ describe("bounty review rules", () => {
     expect(no("scam:someone.testnet see https://example.com/proof").reasons[0]).toMatch(
       /Nothing backs/,
     );
-    expect(no("scam:someone.testnet see https://nearblocks.io/about").reasons[0]).toMatch(
-      /Nothing backs/,
-    );
-    expect(
-      no("scam:someone.testnet https://evil.example/?u=https://nearblocks.io/txns/x").reasons[0],
-    ).toMatch(/Nothing backs/);
   });
 });
 

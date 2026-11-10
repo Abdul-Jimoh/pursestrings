@@ -73,7 +73,7 @@ impl Pursestrings {
         self.assert_owner();
         require!(amount.0 > 0, "amount must be positive");
         require!(
-            asset != Asset::Near || amount.0 <= crate::sales::spendable_near(),
+            asset != Asset::Near || amount.0 <= self.spendable_near(),
             "that NEAR is held for buyers or unpaid shares"
         );
         let owner = self.owner.clone();

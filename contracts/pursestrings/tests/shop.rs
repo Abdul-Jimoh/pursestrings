@@ -63,7 +63,11 @@ async fn owed(env: &Env) -> TestResult<u128> {
     Ok(env.view::<String>("owed_near", json!({})).await?.parse()?)
 }
 
-/// What the account could send if nothing were held: its balance less the storage stake.
+async fn spendable(env: &Env) -> TestResult<u128> {
+    Ok(env.view::<String>("spendable", json!({})).await?.parse()?)
+}
+
+/// The account's balance less its storage stake.
 async fn free(env: &Env) -> TestResult<u128> {
     let b = Tokens::account(env.purse.clone())
         .near_balance()
@@ -173,12 +177,19 @@ async fn the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered() -> T
     let env = Env::new(shop_policy("owner.sandbox")).await?;
     quote(&env, 2 * NEAR).await?;
     assert!(pay(&env, 0, 2 * NEAR).await);
-    let free0 = free(&env).await?;
+    let (free0, can) = (free(&env).await?, spendable(&env).await?);
     assert!(
-        !withdraw(&env, free0 - 2 * NEAR + GAS_SLACK).await,
-        "that would take part of the buyer's payment"
+        can + 2 * NEAR < free0,
+        "the payment, the agent key's gas allowance and free quote slots are set aside"
     );
-    assert!(withdraw(&env, free0 - 2 * NEAR - GAS_SLACK).await);
+    assert!(
+        !withdraw(&env, can + GAS_SLACK).await,
+        "that would take part of what's set aside"
+    );
+    assert!(
+        withdraw(&env, can - NEAR).await,
+        "up to what isn't set aside"
+    );
     env.sandbox.fast_forward(3).await?;
     assert_eq!(owed(&env).await?, 2 * NEAR);
     assert!(free(&env).await? >= 2 * NEAR, "the payment is still there");
