@@ -111,6 +111,10 @@ try {
   }
   throw e;
 }
-const now = await codeHashOf(ACCOUNT);
+let now = await codeHashOf(ACCOUNT);
+for (let i = 0; i < 10 && now !== hash; i++) {
+  await new Promise((r) => setTimeout(r, 2_000));
+  now = await codeHashOf(ACCOUNT);
+}
 console.log(`${ACCOUNT} code hash: ${now}`);
 if (now !== hash) throw new Error("the migration didn't land");
