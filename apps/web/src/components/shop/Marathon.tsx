@@ -36,7 +36,12 @@ function reason(why: string | null): string {
     const r = JSON.parse(why).reason;
     return typeof r === "string" ? r : (Object.keys(r)[0] ?? "");
   } catch {
-    return why.replace(/^Error: /, "").slice(0, 80);
+    return (
+      why
+        .replace(/^Error: /, "")
+        .split(":")[0]
+        ?.slice(0, 60) ?? ""
+    );
   }
 }
 
@@ -64,9 +69,9 @@ export function Marathon() {
         </h2>
         <p className="mt-3 max-w-2xl leading-relaxed text-paper/65">
           We attacked this shop and the community bounty board {s.attempts.toLocaleString()} times
-          on testnet ({day(s.from)}–{day(s.to)}): as a fooled agent with a real key, and as an
-          outsider. {s.refused.toLocaleString()} were refused, {s.events.toLocaleString()} of them
-          as decisions the contract logged on-chain.
+          on testnet ({day(s.from) === day(s.to) ? day(s.from) : `${day(s.from)}–${day(s.to)}`}): as
+          a fooled agent with a real key, and as an outsider. {s.refused.toLocaleString()} were
+          refused, {s.events.toLocaleString()} of them as decisions the contract logged on-chain.
           {s.inconclusive
             ? ` ${s.inconclusive} failed for some other reason, such as a network error, and aren't counted as refused.`
             : ""}
@@ -128,6 +133,10 @@ export function Marathon() {
 }
 
 function Samples({ txs }: { txs: string[] }) {
+  if (!txs.length)
+    return (
+      <span className="text-[0.85rem] text-dim-ink">No transaction: rejected before it ran</span>
+    );
   return (
     <span className="flex flex-wrap gap-x-3 gap-y-1">
       {txs.map((t) => (

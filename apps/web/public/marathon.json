@@ -1,0 +1,200 @@
+{
+  "shop": "shop.factory.ps-spike-1028.testnet",
+  "board": "bounties.factory.ps-spike-1028.testnet",
+  "from": 1794254928994,
+  "to": 1794257158136,
+  "attempts": 1000,
+  "refused": 1000,
+  "events": 652,
+  "inconclusive": 0,
+  "kinds": [
+    {
+      "kind": "agent quotes under the floor",
+      "attempts": 285,
+      "refused": 285,
+      "how": "event",
+      "why": "{\"reason\":{\"BelowFloor\":{\"floor\":\"50000000000000000000000\"}}}",
+      "samples": [
+        "GSuo1YoyRzftGCVxBwgjbNm6anzMzPF4nS36wKqqxXCs",
+        "7GdWo4rp4znqmbyAGDHuEdwq5jHnx5Rus4qusWztKXp3",
+        "Hp9DrctDpPBq1rDNwBntwQrTfxiG6tronUvYBo37ti7H"
+      ]
+    },
+    {
+      "kind": "outsider redirects the split",
+      "attempts": 53,
+      "refused": 53,
+      "how": "failed",
+      "why": "owner only",
+      "samples": [
+        "H4TvHGRKWqjsSvZCfhciRTNffiFGeVhkAAJEUnuiM8zM",
+        "5M2oqsy8kfWNWHV1ohPTYs4QW14byokWVa4Ez1hzJYvx",
+        "HshZZu7wjjKLJPet2mGijuzkKHCWCuJQD5KjoxRMSuJ"
+      ]
+    },
+    {
+      "kind": "outsider lowers the floor",
+      "attempts": 31,
+      "refused": 31,
+      "how": "failed",
+      "why": "owner only",
+      "samples": [
+        "4JQ5LCK5ZESKbEz15FmVrG6RpefaJDFERPPdnirsbCPM",
+        "66fuXaC8TjffYVp4qvafocs9zmfZ3d6nxFprffL8hmcQ",
+        "93JL2E2H1cphM6iwA1Zk85dT9PJ5NYZ7RHbNy1aSa928"
+      ]
+    },
+    {
+      "kind": "bounty agent pays someone other than the claimant",
+      "attempts": 104,
+      "refused": 104,
+      "how": "event",
+      "why": "{\"reason\":\"BountyMismatch\"}",
+      "samples": [
+        "A21Avi1t3P3Pt7vQPUbbUGonpSTDX7LQ3YBkniRxXhA1",
+        "FEytRK4HrKp1Qtg4ED9wDfmHDtjxzsv6HKCAYZnA5Yz2",
+        "2HvyPf6e54zmm5dC3VVYxmnQyFMnMAtpbKv2uX2UEynw"
+      ]
+    },
+    {
+      "kind": "agent key calls an owner method",
+      "attempts": 26,
+      "refused": 26,
+      "how": "protocol",
+      "why": "AccessKeyDepositWithFunctionCallActionError: Deposit is not allowed with function call",
+      "samples": []
+    },
+    {
+      "kind": "outsider pays a quote made for someone else",
+      "attempts": 59,
+      "refused": 59,
+      "how": "failed",
+      "why": "quote is for another buyer",
+      "samples": [
+        "EuJM7P6u25S1x5dEtoyYkSwh4VcAqruCHiv46Ea6ytG6",
+        "3qpkqPLtnxcYWfkY3LRwmBpiBCihSM1mpg3uSbRzRMuS",
+        "E7LhoPJRMbNVAPHUaThRK2iY3vDw3dNq5jXhN5QWVLn6"
+      ]
+    },
+    {
+      "kind": "buyer pays less than the quote",
+      "attempts": 43,
+      "refused": 43,
+      "how": "failed",
+      "why": "less than the price",
+      "samples": [
+        "9KvXStFb7bveVFiRt9QLURfYvXvDK379BuvmLZ7dH5hH",
+        "9tbRyPhJfLP8MeNEemEX7CtjKqc432ecras4xkeuiWfA",
+        "kynuiVAoTS5kYiC6XWhnrVpZU2kWjAw5RozHqnbEEyo"
+      ]
+    },
+    {
+      "kind": "agent refunds an order nobody paid",
+      "attempts": 71,
+      "refused": 71,
+      "how": "event",
+      "why": "{\"reason\":\"NotPaid\"}",
+      "samples": [
+        "D9QubWZBRSzqMzXBdhnsPQtgr1fQDgdJ7afFpmK6viHa",
+        "9s2gEV5obJbBkvphh9uFD2GNjgcQVvaoXBZRDWmWEHCc",
+        "AyVbtLTfss5ApZF32sHT1KXDQAekBcjEHeTwdu1R5rtG"
+      ]
+    },
+    {
+      "kind": "outsider pays an order that doesn't exist",
+      "attempts": 32,
+      "refused": 32,
+      "how": "failed",
+      "why": "unknown order",
+      "samples": [
+        "9Jcb27dgeLJx6HNZsAScBXdQgyZHMZsz5pC4m2jXCFNf",
+        "4615tt9qWAG2srd6iSmkqCMrdiTriMVDQCmVsEBt1aw9",
+        "GbjNDY5NeMECNCZScqj8vYdZ2hnX2tJqHbDwm7skMujJ"
+      ]
+    },
+    {
+      "kind": "outsider freezes the board",
+      "attempts": 19,
+      "refused": 19,
+      "how": "failed",
+      "why": "owner or council only",
+      "samples": [
+        "5fxZcTJiXn7LvjZ6iz6btkqXpnUy1sgeyiGjHeexrQY7",
+        "4dCJQFY5uEGak8RTvyoAAgEf5Xr7NMETJ8Krrzs6KoML",
+        "UCBVNja27uEFpx6PjBs4qGnVvkrGd59WsVyNhArj1tv"
+      ]
+    },
+    {
+      "kind": "outsider withdraws the shop's NEAR",
+      "attempts": 18,
+      "refused": 18,
+      "how": "failed",
+      "why": "owner only",
+      "samples": [
+        "EtmrqMGD4RRK9xLrRp1GQU6USQeKHYVssSMSbpLBm72V",
+        "48zQWcumC6XtEpiEnuMgSbwFopFR7BvLu7BHUXwg915c",
+        "72C3jDiEVbN4igfek6DU2GhTeb9DgW9Sr71Sgbdc67cR"
+      ]
+    },
+    {
+      "kind": "agent refunds more than the shop kept",
+      "attempts": 99,
+      "refused": 99,
+      "how": "event",
+      "why": "{\"reason\":{\"OverHeld\":{\"max\":\"5000000000000000000000\"}}}",
+      "samples": [
+        "2x4uKvwbwkKM1wFwc78mPnwDy46jnQPeVHe9MGAhTz76",
+        "8KG2EWkhENks1XNGEL7H6jHdS6R3749jRLoeogKfYew3",
+        "Ht6j4qLAMnhwe9BXLq1WffB7cZCjGCw3WZnnwqu9vh4S"
+      ]
+    },
+    {
+      "kind": "outsider approves a bounty payout",
+      "attempts": 29,
+      "refused": 29,
+      "how": "failed",
+      "why": "council only",
+      "samples": [
+        "8MJro1NLSzKhq86dzdgi62LBusy2VhRXM6gNtnaSydjE",
+        "2Gct4TtHeA4rvXsgNcBMGTM16G4dyKFXMhzS8W2vExg2",
+        "E1QYox51hqGNeLvGRXQimWLwbkJER3KRua4k2g2NPtk4"
+      ]
+    },
+    {
+      "kind": "agent pays someone off the allowlist",
+      "attempts": 93,
+      "refused": 93,
+      "how": "event",
+      "why": "{\"reason\":\"RecipientNotAllowed\"}",
+      "samples": [
+        "2sG4xyyGmoC6d2R5WuEw8Zy7eGBHFDzsLDtpEMnRQSLd",
+        "9DJMBET3VeimUnmXhNXh5gycWWNqdFo2yhKRuRCPpLJ7",
+        "8HmEjjdTHAsKPahKWgoCe9C6uBAnWBwqHxNWNbezGXJT"
+      ]
+    },
+    {
+      "kind": "outsider delivers an order",
+      "attempts": 17,
+      "refused": 17,
+      "how": "failed",
+      "why": "agents call through their access key",
+      "samples": [
+        "2mxPHBnCbeZnTvy7pvNmrvoKVAxkx3AJZrNmknjHutc3",
+        "6vAB3gFCUgrUspc8BbuaRBqKymicY7LZNfrm9if3bfiw",
+        "A9VLrU9T6GLPTMdxirq4HgYBTh5qp193b1GjFA9KmPT8"
+      ]
+    },
+    {
+      "kind": "outsider posts a bounty",
+      "attempts": 21,
+      "refused": 21,
+      "how": "failed",
+      "why": "owner or council only",
+      "samples": [
+        "5KGJGGnsPCBwpUzSzWb7rhzSSGz6YamJ6jxFgj3CWXqz",
+        "75gBquF1B1xcPhLQvrV2UgJBFjvVt8LpqCcmFz9xA6U1",
+        "55L3AP9Fsf94WSGoHoSZ4Mwieri439SwGdLDZeArxBCM"
+      ]
+    }
+  ]
+}
