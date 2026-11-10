@@ -73,9 +73,9 @@ contract and tested.
 | However it's talked into it, the agent can't… | Because | Test |
 |---|---|---|
 | Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:229](contracts/pursestrings/src/sales.rs#L229)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L92) |
-| Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:380](contracts/pursestrings/src/sales.rs#L380)). While frozen, the agent can't mark orders delivered ([sales.rs:349](contracts/pursestrings/src/sales.rs#L349)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L214) |
-| Spend what buyers paid | The owner's `withdraw`, an agent's NEAR spend, an approval and a refund after delivery all stop short of NEAR held for undelivered orders or unpaid shares, counted per order and per payee. The agent keys' gas allowances and, for a shop, its free quote slots' storage are set aside too, since the keys sign as the account ([sales.rs:80](contracts/pursestrings/src/sales.rs#L80)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L176), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L828) |
-| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:605](contracts/pursestrings/src/sales.rs#L605)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
+| Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:379](contracts/pursestrings/src/sales.rs#L379)). While frozen, the agent can't mark orders delivered ([sales.rs:348](contracts/pursestrings/src/sales.rs#L348)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L214) |
+| Spend what buyers paid | The owner's `withdraw`, an agent's NEAR spend, an approval and a refund after delivery all stop short of NEAR held for undelivered orders or unpaid shares, counted per order and per payee. The agent keys' gas allowances and, for a shop, its free quote slots' storage are set aside too, since the keys sign as the account ([sales.rs:80](contracts/pursestrings/src/sales.rs#L80)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L176), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L827) |
+| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:604](contracts/pursestrings/src/sales.rs#L604)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
 | Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:365](contracts/pursestrings/src/policy.rs#L365)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L92) |
 | Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:234](contracts/pursestrings/src/bounty.rs#L234) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L75) |
 | Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L330)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
@@ -252,10 +252,15 @@ can submit settlement proofs.
   whole gas reservation is released, though the cancel burned some gas. Only the owner can sign a
   cancel.
 - **Not all storage growth is set aside.** Held NEAR, the agent keys' gas and a shop's quote
-  slots are reserved, and a payment is refused if storing its order would dip into what's held.
-  Finished orders stay on the public ledger for good, paid for from the account's own NEAR, and
-  storage for new spend requests and bounties isn't reserved. Velocity limits bound how fast
-  requests grow, and anyone can prune finished ones after seven days.
+  slots are reserved, and a payment is refused unless the account can store its order out of what
+  it could spend itself. Finished orders stay on the public ledger for good. A delivery's receipt
+  (up to 256 bytes) and new spend requests and bounties add storage with no such check; velocity
+  limits bound how fast requests grow, and anyone can prune finished ones after seven days.
+- **Token payments don't count as scam evidence.** A linked transaction counts when the address
+  signed or received it, so a USDC transfer, whose receiver is the token contract, doesn't.
+- **The upgrade script's checks bind only the script.** Anyone can deliver a due migration, so
+  an account still on code from before held-NEAR tracking could be upgraded with open orders,
+  which then stay untracked unless they're among the newest 50.
 - **One superseded build over-counts on upgrade.** An account running the code at `4fe267a`
   (published on the testnet factory, run by no account) would count its held NEAR twice when
   upgraded. That locks NEAR rather than releasing it; the owner can't withdraw the excess.

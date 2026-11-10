@@ -324,13 +324,12 @@ impl Pursestrings {
             env::panic_str(reason);
         }
         let price = self.orders.get(&order_id).expect("checked").price.0;
-        // The order's storage must come from the account's own NEAR, not from what it holds for
-        // other buyers; finished orders stay on the public ledger.
+        // The order's storage must come from what the account could spend itself, not from
+        // what it holds or sets aside; finished orders stay on the public ledger. The payment is
+        // already in the balance.
         let byte = env::storage_byte_cost().as_yoctonear();
-        let stake = u128::from(env::storage_usage()) * byte;
         require!(
-            env::account_balance().as_yoctonear() - amount
-                >= stake + held_near() + ORDER_BYTES * byte,
+            self.spendable_near() >= amount + ORDER_BYTES * byte,
             "the shop can't afford to store another order"
         );
         let change = amount - price;
@@ -972,11 +971,11 @@ mod tests {
         };
         ctx(0);
         let byte = env::storage_byte_cost().as_yoctonear();
-        let need = u128::from(env::storage_usage()) * byte + ORDER_BYTES * byte;
+        let need = reserve(&c) + ORDER_BYTES * byte;
         ctx(need - 1);
         assert!(
             fails(|| c.pay(0)),
-            "storing it would come out of other buyers' payments"
+            "storing it would come out of what's held or set aside for agent gas and quotes"
         );
         ctx(need);
         c.pay(0);
