@@ -90,6 +90,9 @@ describe("bounty review rules", () => {
     expect(no("scam:someone.testnet see https://nearblocks.io/about").reasons[0]).toMatch(
       /Nothing backs/,
     );
+    expect(
+      no("scam:someone.testnet https://evil.example/?u=https://nearblocks.io/txns/x").reasons[0],
+    ).toMatch(/Nothing backs/);
   });
 });
 

@@ -44,14 +44,25 @@ const queued = async () =>
     ([, p]) => p.ops.length === 1 && p.ops[0]?.Migrate?.code_hash === hash,
   );
 let migration = await queued();
-// Orders paid under code that didn't track held NEAR stay unprotected after the upgrade, so a
-// shop upgrades with none open.
-const open = (await view<[number, { status: string }][]>(ACCOUNT, "recent_orders", { limit: 100 }))
-  .filter(([, o]) => o.status === "Paid")
-  .map(([id]) => id);
-if (open.length && process.env.ALLOW_OPEN_ORDERS !== "1")
+// Orders paid and shares left unpaid under code that didn't track held NEAR stay unprotected
+// after the upgrade, so a shop upgrades with none open.
+const open: number[] = [];
+for (let before = await view<number>(ACCOUNT, "next_order_id"); before > 0; before -= 100) {
+  const page = await view<[number, { status: string }][]>(ACCOUNT, "recent_orders", {
+    before,
+    limit: 100,
+  });
+  open.push(...page.filter(([, o]) => o.status === "Paid").map(([id]) => id));
+}
+const split = (await view<{ split: { account: string }[] }>(ACCOUNT, "policy")).split;
+const unpaid: string[] = [];
+for (const { account } of split) {
+  const owed = await view<string>(ACCOUNT, "unpaid", { account, asset: "Near" });
+  if (owed !== "0") unpaid.push(`${account} (${owed} yocto)`);
+}
+if ((open.length || unpaid.length) && process.env.ALLOW_OPEN_ORDERS !== "1")
   throw new Error(
-    `orders ${open.join(", ")} are paid and not delivered; deliver or refund them first`,
+    `deliver or refund paid orders [${open.join(", ")}] and retry unpaid shares [${unpaid.join(", ")}] first`,
   );
 if (!migration) {
   const args = { ops: [{ Migrate: { code_hash: hash } }] };
