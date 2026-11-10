@@ -41,7 +41,13 @@ flowchart LR
 ## Try it
 
 **From a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
-[rust-toolchain.toml](rust-toolchain.toml)), Node 22+ and pnpm 10.
+[rust-toolchain.toml](rust-toolchain.toml)), [cargo-near](https://github.com/near/cargo-near) 0.22
+to build the contracts, Node 22+ and pnpm 10. CI runs both commands from a clean checkout
+([ci.yml](.github/workflows/ci.yml)).
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-installer.sh | sh
+```
 
 | Do | See |
 |---|---|

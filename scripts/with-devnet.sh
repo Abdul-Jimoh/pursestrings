@@ -8,6 +8,10 @@ script=${1:?usage: with-devnet.sh <demo|redteam> [--keep]}
 for tool in cargo node pnpm; do
   command -v "$tool" >/dev/null || { echo "make $script needs $tool on PATH (see README)" >&2; exit 1; }
 done
+cargo near --version >/dev/null 2>&1 || {
+  echo "make $script needs cargo-near 0.22 to build the contracts (install command in the README)" >&2
+  exit 1
+}
 
 pnpm install --frozen-lockfile --silent
 rm -f .devnet/devnet.json

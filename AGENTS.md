@@ -28,7 +28,7 @@ make redteam    # six attacks; output must match scripts/redteam/expected.txt
 make lint       # rustfmt, clippy -D warnings, Biome
 ```
 
-`make demo` and `make redteam` need `cargo`, Node 22+ and pnpm 10, and nothing else: no NEAR
+`make demo` and `make redteam` need `cargo`, cargo-near 0.22, Node 22+ and pnpm 10, and nothing else: no NEAR
 account, keys or network. Sandbox tests download a `near-sandbox` binary on first run.
 
 ## Checking a claim
