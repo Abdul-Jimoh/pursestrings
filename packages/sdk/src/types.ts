@@ -131,7 +131,8 @@ export type RefundDenial =
   | "NoRefundLimit"
   | { OverHeld: { max: U128 } }
   | { OverWindow: { period_s: number; remaining: U128 } }
-  | { NotWhole: { held: U128 } };
+  | { NotWhole: { held: U128 } }
+  | { HeldForOthers: { spendable: U128 } };
 
 export type RefundDecision = "Refunded" | { Denied: { reason: RefundDenial } };
 

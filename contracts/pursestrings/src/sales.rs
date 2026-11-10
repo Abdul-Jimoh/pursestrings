@@ -13,28 +13,54 @@ const PAYOUT_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 /// keep a compromised agent key from filling storage.
 pub const MAX_OPEN_QUOTES: u32 = 64;
 const MAX_PAGE: u32 = 100;
-/// Raw storage key, outside the contract struct, so accounts created before it existed can
-/// migrate without a state rewrite.
+// Held NEAR lives in raw storage keys, outside the contract struct, so accounts created
+// before it existed can migrate without a state rewrite. The total is the sum of the per-order
+// and per-payee entries.
 const OWED_NEAR: &[u8] = b"owed_near";
 
-/// NEAR the account holds for others: payments for orders not yet delivered and split shares
-/// that failed to pay out. Withdrawals and spends can't touch it.
-fn held_near() -> u128 {
-    env::storage_read(OWED_NEAR).map_or(0, |b| {
+fn read_u128(key: &[u8]) -> u128 {
+    env::storage_read(key).map_or(0, |b| {
         u128::from_le_bytes(b.try_into().unwrap_or_else(|_| env::abort()))
     })
 }
 
-/// Saturating, because orders paid before the account tracked this were never added.
-fn owe_near(asset: &Asset, add: u128, sub: u128) {
-    if *asset != Asset::Near {
-        return;
-    }
-    let v = held_near().saturating_add(add).saturating_sub(sub);
+fn write_u128(key: &[u8], v: u128) {
     if v == 0 {
-        env::storage_remove(OWED_NEAR);
+        env::storage_remove(key);
     } else {
-        env::storage_write(OWED_NEAR, &v.to_le_bytes());
+        env::storage_write(key, &v.to_le_bytes());
+    }
+}
+
+fn order_key(order_id: u64) -> Vec<u8> {
+    [b"held:".as_slice(), &order_id.to_le_bytes()].concat()
+}
+
+fn payee_key(account: &AccountId) -> Vec<u8> {
+    [b"owed_to:".as_slice(), account.as_bytes()].concat()
+}
+
+/// NEAR the account holds for others: payments for orders not yet delivered and split shares
+/// that failed to pay out. Withdrawals, spends and refunds of delivered orders can't touch it.
+fn held_near() -> u128 {
+    read_u128(OWED_NEAR)
+}
+
+fn hold(asset: &Asset, key: &[u8], amount: u128) {
+    if *asset == Asset::Near {
+        write_u128(key, read_u128(key) + amount);
+        write_u128(OWED_NEAR, held_near() + amount);
+    }
+}
+
+/// Releases at most what was held under `key`, so an order paid before the account tracked
+/// this releases nothing that newer orders hold.
+fn release(asset: &Asset, key: &[u8], amount: u128) {
+    if *asset == Asset::Near {
+        let held = read_u128(key);
+        let r = held.min(amount);
+        write_u128(key, held - r);
+        write_u128(OWED_NEAR, held_near().saturating_sub(r));
     }
 }
 
@@ -115,6 +141,10 @@ pub enum RefundDenial {
     NotWhole {
         held: U128,
     },
+    /// The kept share is gone and the rest is held for other buyers.
+    HeldForOthers {
+        spendable: U128,
+    },
 }
 
 #[near(serializers = [borsh, json])]
@@ -159,6 +189,8 @@ impl Pursestrings {
         let p = &self.policy;
         let denial = if p.frozen {
             Some(QuoteDenial::Frozen)
+        } else if asset != Asset::Near {
+            Some(QuoteDenial::NotForSale)
         } else {
             match p.floor(&asset) {
                 None => Some(QuoteDenial::NotForSale),
@@ -269,7 +301,7 @@ impl Pursestrings {
         order.receipt = Some(receipt.clone());
         order.held = U128(kept);
         let asset = order.asset.clone();
-        owe_near(&asset, 0, paid);
+        release(&asset, &order_key(order_id), paid);
         Event::Delivered {
             order_id,
             receipt,
@@ -365,7 +397,7 @@ impl Pursestrings {
     pub fn retry_payout(&mut self, account: AccountId, asset: Asset) {
         let key = (account.clone(), asset.clone());
         let amount = self.unpaid.remove(&key).expect("nothing owed");
-        owe_near(&asset, 0, amount.0);
+        release(&asset, &payee_key(&account), amount.0);
         self.pay_share(None, account, asset, amount);
     }
 
@@ -382,7 +414,7 @@ impl Pursestrings {
             let key = (account.clone(), asset.clone());
             let owed = self.unpaid.get(&key).map_or(0, |a| a.0);
             self.unpaid.insert(key, U128(owed + amount.0));
-            owe_near(&asset, amount.0, 0);
+            hold(&asset, &payee_key(&account), amount.0);
         }
         Event::Payout {
             order_id,
@@ -413,7 +445,7 @@ impl Pursestrings {
         o.status = status;
         let asset = o.asset.clone();
         if status == OrderStatus::Paid {
-            owe_near(&asset, amount.0, 0);
+            hold(&asset, &order_key(order_id), amount.0);
         }
         if let Some(bucket) = bucket
             && let Some(w) = self.policy.refund_limit(&asset)
@@ -508,6 +540,16 @@ impl Pursestrings {
         if order.status == OrderStatus::Paid && amount != order.held.0 {
             return Some(RefundDenial::NotWhole { held: order.held });
         }
+        // After delivery the kept share is the owner's, who may have withdrawn it: a refund
+        // then mustn't come out of what other buyers' orders hold.
+        if order.status == OrderStatus::Delivered
+            && order.asset == Asset::Near
+            && amount > spendable_near()
+        {
+            return Some(RefundDenial::HeldForOthers {
+                spendable: U128(spendable_near()),
+            });
+        }
         let Some(w) = self.policy.refund_limit(&order.asset) else {
             return Some(RefundDenial::NoRefundLimit);
         };
@@ -540,7 +582,7 @@ impl Pursestrings {
         o.deliver_by = Some(deliver_by);
         o.held = o.price;
         let (asset, price) = (o.asset.clone(), o.price);
-        owe_near(&asset, price.0, 0);
+        hold(&asset, &order_key(order_id), price.0);
         self.open_quotes -= 1;
         Event::Sale {
             order_id,
@@ -564,7 +606,7 @@ impl Pursestrings {
             o.status = OrderStatus::Refunded;
         }
         if status == OrderStatus::Paid {
-            owe_near(&order.asset, 0, amount.0);
+            release(&order.asset, &order_key(order_id), amount.0);
         }
         let payer = order.payer.clone().expect("paid");
         self.transfer(
@@ -782,6 +824,185 @@ mod tests {
         c.policy.frozen = false;
         c.deliver(0, "sha256:abc".into());
         assert_eq!(c.owed_near(), U128(0), "delivered: the split is paid out");
+    }
+
+    fn at(who: &str, balance: Option<u128>, failed: bool) {
+        let mut b = VMContextBuilder::new();
+        b.current_account_id("purse.near".parse().unwrap())
+            .predecessor_account_id(who.parse().unwrap())
+            .signer_account_pk(crate::spend::tests::agent_pk())
+            .attached_deposit(NearToken::from_yoctonear(u128::from(who == "owner.near")))
+            .block_timestamp(1_100 * 1_000_000_000);
+        if let Some(balance) = balance {
+            b.account_balance(NearToken::from_yoctonear(balance));
+        }
+        let results = if failed {
+            vec![near_sdk::PromiseResult::Failed]
+        } else {
+            vec![]
+        };
+        testing_env!(
+            b.build(),
+            near_sdk::test_vm_config(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            results
+        );
+    }
+
+    fn stake() -> u128 {
+        u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear()
+    }
+
+    #[test]
+    fn failed_payouts_and_refunds_stay_held() {
+        let mut c = shop();
+        quote(&mut c, 2_500_000);
+        pay(&mut c, 2_500_000, 0, 1_010);
+        as_agent(1_020);
+        c.deliver(0, "sha256:abc".into());
+        assert_eq!(c.owed_near(), U128(0));
+        let dao: AccountId = "dao.near".parse().unwrap();
+        at("purse.near", None, true);
+        c.on_payout(Some(0), dao.clone(), Asset::Near, U128(500_000));
+        assert_eq!(
+            c.owed_near(),
+            U128(500_000),
+            "the DAO's unpaid share is held"
+        );
+        assert_eq!(c.unpaid(dao.clone(), Asset::Near), U128(500_000));
+        at("anyone.near", None, false);
+        c.retry_payout(dao, Asset::Near);
+        assert_eq!(c.owed_near(), U128(0));
+
+        c.policy.refund_limits[0].window.limit = U128(2_000_000);
+        quote(&mut c, 2_000_000);
+        pay(&mut c, 2_000_000, 1, 1_030);
+        as_agent(1_040);
+        assert_eq!(
+            c.refund(1, U128(2_000_000), "x".into()),
+            RefundDecision::Refunded
+        );
+        assert_eq!(c.owed_near(), U128(0));
+        at("purse.near", None, true);
+        c.on_refunded(1, U128(2_000_000), None, OrderStatus::Paid);
+        assert_eq!(
+            c.owed_near(),
+            U128(2_000_000),
+            "the refund bounced: held again"
+        );
+        assert_eq!(c.order(1).unwrap().status, OrderStatus::Paid);
+    }
+
+    #[test]
+    fn an_order_paid_before_tracking_releases_nothing_newer_orders_hold() {
+        let mut c = shop();
+        quote(&mut c, 2_000_000);
+        quote(&mut c, 3_000_000);
+        pay(&mut c, 3_000_000, 1, 1_010);
+        let legacy = c.orders.get_mut(&0).unwrap();
+        legacy.status = OrderStatus::Paid;
+        legacy.payer = Some(buyer());
+        legacy.held = legacy.price;
+        legacy.deliver_by = Some(1_610);
+        c.open_quotes -= 1;
+        as_agent(1_020);
+        c.deliver(0, "sha256:old".into());
+        assert_eq!(
+            c.owed_near(),
+            U128(3_000_000),
+            "order 1 is still held in full"
+        );
+    }
+
+    #[test]
+    fn approving_a_waiting_spend_rechecks_held_near() {
+        let mut c = shop();
+        c.policy.assets.push(crate::policy::AssetRule {
+            asset: Asset::Near,
+            per_tx_cap: U128(u128::MAX),
+            windows: vec![],
+            cosign_above: Some(U128(1)),
+            risk_check_above: None,
+        });
+        c.policy.recipients.push(crate::types::Recipient::Near {
+            account: "vendor.near".parse().unwrap(),
+        });
+        as_agent(1_000);
+        let d = c.request_spend(crate::types::SpendRequest {
+            asset: Asset::Near,
+            amount: U128(1_000_000),
+            dest: crate::types::Dest::Near {
+                account: "vendor.near".parse().unwrap(),
+            },
+            purpose: "costs".into(),
+            idempotency_key: "k".into(),
+            bounty: None,
+        });
+        assert!(matches!(d, crate::types::Decision::NeedsCosign { .. }));
+        quote(&mut c, 2_000_000);
+        pay(&mut c, 2_000_000, 0, 1_010);
+        at("owner.near", None, false);
+        // The owner's attached yoctoNEAR is part of the balance during the call.
+        let tight = stake() + 2_000_000 + 999_998;
+        at("owner.near", Some(tight), false);
+        assert!(
+            fails(|| c.approve_request(0)),
+            "approving would spend the buyer's payment"
+        );
+        at("owner.near", Some(tight + 1), false);
+        c.approve_request(0);
+    }
+
+    #[test]
+    fn a_refund_after_delivery_cant_dip_into_other_buyers_payments() {
+        let mut c = shop();
+        quote(&mut c, 2_500_000);
+        pay(&mut c, 2_500_000, 0, 1_010);
+        as_agent(1_020);
+        c.deliver(0, "sha256:abc".into());
+        quote(&mut c, 2_000_000);
+        pay(&mut c, 2_000_000, 1, 1_030);
+        at("purse.near", None, false);
+        let withdrawn = stake() + 2_000_000;
+        at("purse.near", Some(withdrawn), false);
+        assert_eq!(
+            c.refund(0, U128(250_000), "x".into()),
+            RefundDecision::Denied {
+                reason: RefundDenial::HeldForOthers { spendable: U128(0) }
+            },
+            "the owner took the kept share; the rest is order 1's"
+        );
+        at("purse.near", Some(withdrawn + 250_000), false);
+        assert_eq!(
+            c.refund(0, U128(250_000), "x".into()),
+            RefundDecision::Refunded
+        );
+    }
+
+    #[test]
+    fn token_floors_are_refused_and_old_ones_sell_nothing_or_block_a_freeze() {
+        let mut c = shop();
+        let floor = PriceFloor {
+            asset: usdc(),
+            min: U128(1),
+        };
+        let mut p = c.policy.clone();
+        assert!(fails(|| crate::policy::apply(
+            crate::policy::PolicyOp::SetPriceFloor(floor.clone()),
+            &mut p
+        )));
+        c.policy.floors.push(floor);
+        as_agent(1_000);
+        assert_eq!(
+            c.quote(None, usdc(), U128(5), "x".into()),
+            QuoteDecision::Denied {
+                reason: QuoteDenial::NotForSale
+            }
+        );
+        at("owner.near", None, false);
+        c.freeze();
+        assert!(c.policy.frozen);
     }
 
     #[test]

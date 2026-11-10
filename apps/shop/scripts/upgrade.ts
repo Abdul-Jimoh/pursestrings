@@ -44,6 +44,15 @@ const queued = async () =>
     ([, p]) => p.ops.length === 1 && p.ops[0]?.Migrate?.code_hash === hash,
   );
 let migration = await queued();
+// Orders paid under code that didn't track held NEAR stay unprotected after the upgrade, so a
+// shop upgrades with none open.
+const open = (await view<[number, { status: string }][]>(ACCOUNT, "recent_orders", { limit: 100 }))
+  .filter(([, o]) => o.status === "Paid")
+  .map(([id]) => id);
+if (open.length && process.env.ALLOW_OPEN_ORDERS !== "1")
+  throw new Error(
+    `orders ${open.join(", ")} are paid and not delivered; deliver or refund them first`,
+  );
 if (!migration) {
   const args = { ops: [{ Migrate: { code_hash: hash } }] };
   if (owner === DAO) {

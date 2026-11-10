@@ -72,10 +72,10 @@ contract and tested.
 
 | However it's talked into it, the agent can't… | Because | Test |
 |---|---|---|
-| Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:148](contracts/pursestrings/src/sales.rs#L148)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L88) |
-| Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:288](contracts/pursestrings/src/sales.rs#L288)). While frozen, the agent can't mark orders delivered ([sales.rs:257](contracts/pursestrings/src/sales.rs#L257)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L203) |
-| Spend what buyers paid | Neither the owner's `withdraw` nor an agent's NEAR spend can touch NEAR held for undelivered orders or unpaid shares ([sales.rs:42](contracts/pursestrings/src/sales.rs#L42)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L721) |
-| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:508](contracts/pursestrings/src/sales.rs#L508)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
+| Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:178](contracts/pursestrings/src/sales.rs#L178)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L88) |
+| Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:320](contracts/pursestrings/src/sales.rs#L320)). While frozen, the agent can't mark orders delivered ([sales.rs:289](contracts/pursestrings/src/sales.rs#L289)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L203) |
+| Spend what buyers paid | The owner's `withdraw`, an agent's NEAR spend, an approval and a refund after delivery all stop short of NEAR held for undelivered orders or unpaid shares, counted per order and per payee ([sales.rs:68](contracts/pursestrings/src/sales.rs#L68)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L763) |
+| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:540](contracts/pursestrings/src/sales.rs#L540)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
 | Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:365](contracts/pursestrings/src/policy.rs#L365)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L88) |
 | Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:234](contracts/pursestrings/src/bounty.rs#L234) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L75) |
 | Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L330)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
@@ -105,7 +105,8 @@ come only from bounties paid in full, and each traces back to its bounty
 These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testnet-setup.ts)).
 
 - **Council members can't approve their own payouts, or any payout on a bounty they posted**,
-  so a second account doesn't help ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213),
+  so they can't post a bounty for a second account and approve it themselves. Paying a second
+  account on someone else's bounty still needs that bounty's evidence to pass review ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213),
   [test](contracts/pursestrings/src/bounty.rs#L501)). A council approval uses the tier in force at that moment, not when
   the request was made ([test](contracts/pursestrings/src/bounty.rs#L518)).
 - **The DAO can take a wrong report back.** A retracted bounty leaves the scam list and the

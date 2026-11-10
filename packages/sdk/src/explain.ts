@@ -81,5 +81,7 @@ export function describeRefund(d: RefundDecision, fmt: FormatAmount = (a) => a):
   if ("OverHeld" in r) return `refused: at most ${fmt(r.OverHeld.max)} can be refunded on it.`;
   if ("NotWhole" in r)
     return `refused: before delivery a refund returns the whole ${fmt(r.NotWhole.held)} or nothing.`;
+  if ("HeldForOthers" in r)
+    return `refused: the kept share is gone and the rest is held for other buyers; ${fmt(r.HeldForOthers.spendable)} is free.`;
   return `refused: over the refund budget per ${duration(r.OverWindow.period_s)}; ${fmt(r.OverWindow.remaining)} left.`;
 }

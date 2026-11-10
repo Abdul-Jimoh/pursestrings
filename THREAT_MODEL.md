@@ -33,8 +33,8 @@ pay whoever paid that order, only within the owner's refund window, and only as 
 payment before delivery or from the part of the price the account kept after it
 ([sales.rs](contracts/pursestrings/src/sales.rs)). `deliver` is refused while the account is
 frozen, so a stolen agent key can't mark orders delivered and end the buyers' right to reclaim.
-NEAR held for undelivered orders or unpaid split shares is out of reach of agent spends and the
-owner's `withdraw` ([sales.rs:42](contracts/pursestrings/src/sales.rs#L42),
+NEAR held for undelivered orders or unpaid split shares, counted per order and per payee, is out
+of reach of agent spends, approvals, refunds after delivery and the owner's `withdraw` ([sales.rs:68](contracts/pursestrings/src/sales.rs#L68),
 [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L172)).
 
 Test: [`inv1_agent_key_cannot_move_funds`](contracts/pursestrings/tests/invariants.rs#L37) checks
@@ -71,7 +71,7 @@ as strict as the current policy goes into the queue with an `eta`; the rest appl
 ([admin.rs:94](contracts/pursestrings/src/admin.rs#L94)). Unfreezing and adding recipients count
 as loosening. So does any change to a window's length: usage is kept per length, and a new
 length would start from zero
-([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L903)).
+([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L904)).
 
 Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/tests/invariants.rs#L170)
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it

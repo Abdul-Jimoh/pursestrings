@@ -69,7 +69,8 @@ export type RefundDecision =
           | "NoRefundLimit"
           | { OverHeld: { max: string } }
           | { OverWindow: { period_s: number; remaining: string } }
-          | { NotWhole: { held: string } };
+          | { NotWhole: { held: string } }
+          | { HeldForOthers: { spendable: string } };
       };
     };
 
@@ -183,6 +184,8 @@ export function refundLine(r: RefundTry): { ok: boolean; text: string } {
       ok: false,
       text: `Refused: before delivery it's all ${near(why.NotWhole.held)} back or nothing`,
     };
+  if ("HeldForOthers" in why)
+    return { ok: false, text: "Refused: what's left is held for other buyers' orders" };
   return {
     ok: false,
     text: `Refused: the shop's refund budget has ${near(why.OverWindow.remaining)} left today`,

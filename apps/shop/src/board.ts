@@ -28,7 +28,7 @@ export interface Review {
 const WORK = /^scam:(\S+)\s+([\s\S]+)$/;
 /** A link anyone can open to see the address in a transaction; any other site proves nothing. */
 const EXPLORER_LINK =
-  /https:\/\/((testnet\.)?nearblocks\.io|explorer\.(testnet\.)?near\.org|(sepolia\.)?(basescan\.org|etherscan\.io)|[a-z0-9-]+\.blockscout\.com)\/\S+/i;
+  /https:\/\/((testnet\.)?nearblocks\.io|explorer\.(testnet\.)?near\.org|(sepolia\.)?(basescan\.org|etherscan\.io)|[a-z0-9-]+\.blockscout\.com)\/(txns?|address|accounts?)\/[A-Za-z0-9._-]+/i;
 
 export function parseWork(work: string): { address: string; evidence: string } | null {
   const m = WORK.exec(work.trim());

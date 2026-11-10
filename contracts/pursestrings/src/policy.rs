@@ -448,6 +448,7 @@ pub fn apply(op: PolicyOp, p: &mut Policy) {
         }
         PolicyOp::RemoveGroup { name } => p.groups.retain(|x| x.name != name),
         PolicyOp::SetPriceFloor(f) => {
+            require!(f.asset == Asset::Near, "the shop sells in NEAR only");
             let asset = f.asset.clone();
             upsert(&mut p.floors, f, |x| x.asset == asset);
         }
@@ -651,8 +652,8 @@ impl Policy {
                 && self
                     .floors
                     .iter()
-                    .all(|f| f.asset == Asset::Near && f.min.0 > 0),
-            "price floors: NEAR only, positive"
+                    .all(|f| near_side(&f.asset) && f.min.0 > 0),
+            "price floors: unique NEAR or NEP-141 assets, positive"
         );
         require!(
             self.split.len() <= MAX_SHARES
