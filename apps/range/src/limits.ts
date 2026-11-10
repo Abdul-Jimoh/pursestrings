@@ -11,7 +11,9 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /**
  * The Range's spending guard: a hard daily cap on model spend (the Range closes for the rest of
- * the UTC day once it's reached) and a per-account hourly attempt limit.
+ * the UTC day once it's reached) and per-account hourly limits. `key` separates kinds of use,
+ * such as a Range attempt and a chat message, which count against different hourly limits but
+ * the same daily budget.
  */
 export class Limits {
   private spent = new Map<string, number>();
@@ -34,12 +36,16 @@ export class Limits {
     return this.spentToday() < this.dailyUsd;
   }
 
-  check(account: string): { ok: true } | { ok: false; reason: string } {
+  check(
+    key: string,
+    perHour = this.perHour,
+    what = "attempts",
+  ): { ok: true } | { ok: false; reason: string } {
     if (!this.open())
       return { ok: false, reason: "closed for today: the daily model budget is used up" };
-    const recent = (this.attempts.get(account) ?? []).filter((t) => t > this.now() - 3_600_000);
-    if (recent.length >= this.perHour) {
-      return { ok: false, reason: `limit of ${this.perHour} attempts an hour per account` };
+    const recent = (this.attempts.get(key) ?? []).filter((t) => t > this.now() - 3_600_000);
+    if (recent.length >= perHour) {
+      return { ok: false, reason: `limit of ${perHour} ${what} an hour per account` };
     }
     return { ok: true };
   }

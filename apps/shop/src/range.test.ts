@@ -1,6 +1,7 @@
 import type { Agent, Order } from "@pursestrings/sdk";
 import { describe, expect, it } from "vitest";
 import { paidOn, scoreboard } from "./range.ts";
+import { cached } from "./routes.ts";
 import { type Chat, sellerTurn } from "./seller.ts";
 
 const NEAR = 10n ** 24n;
@@ -122,5 +123,30 @@ describe("front desk refunds", () => {
       ask,
     );
     expect(mine.refunds).toEqual([]);
+  });
+});
+
+describe("cached chain reads", () => {
+  it("serves one read per window and drops a failed one", async () => {
+    let t = 0;
+    let reads = 0;
+    let fail = false;
+    const get = cached(
+      5_000,
+      async () => {
+        reads++;
+        if (fail) throw new Error("rpc down");
+        return reads;
+      },
+      () => t,
+    );
+    expect(await Promise.all([get(), get()])).toEqual([1, 1]);
+    t = 4_999;
+    expect(await get()).toBe(1);
+    t = 5_000;
+    fail = true;
+    await expect(get()).rejects.toThrow("rpc down");
+    fail = false;
+    expect(await get()).toBe(3);
   });
 });

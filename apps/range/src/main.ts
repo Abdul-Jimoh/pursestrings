@@ -134,8 +134,11 @@ if (shopAccount) {
     ),
     sources,
     ...(board ? { board } : {}),
-    allow: (account) => limits.check(account),
-    record: (account, usage) => limits.record(account, cost(usage, pricing)),
+    // A chat message is much smaller than a Range attempt, so chats get their own hourly limit;
+    // the daily model budget is still shared.
+    allow: (account) =>
+      limits.check(`chat:${account}`, Number(env("SHOP_CHAT_PER_HOUR", "30")), "messages"),
+    record: (account, usage) => limits.record(`chat:${account}`, cost(usage, pricing)),
   });
   routes.push(route);
   setInterval(() => tick().catch((e) => console.error("shop:", e)), 5_000);

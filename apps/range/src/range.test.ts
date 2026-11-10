@@ -221,6 +221,19 @@ describe("limits", () => {
     expect(l.check("b").ok).toBe(true);
   });
 
+  it("counts chat messages apart from attempts, against the same daily budget", () => {
+    const l = new Limits({ dailyUsd: 1, perHour: 1, now: () => 0 });
+    l.record("a", 0.1);
+    expect(l.check("a").ok).toBe(false);
+    for (let i = 0; i < 3; i++) l.record("chat:a", 0.1);
+    expect(l.check("chat:a", 30, "messages").ok).toBe(true);
+    for (let i = 0; i < 7; i++) l.record("chat:a", 0.1);
+    expect(l.check("chat:a", 30, "messages")).toEqual({
+      ok: false,
+      reason: "closed for today: the daily model budget is used up",
+    });
+  });
+
   it("treats approved payments to our own accounts as fine", () => {
     const attempt = {
       steps: [

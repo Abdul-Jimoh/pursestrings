@@ -42,8 +42,41 @@ function serial() {
   };
 }
 
+/**
+ * Every open page polls the same few views, so one read serves everyone for `ms`. A failed read
+ * isn't kept.
+ */
+export function cached<T>(ms: number, read: () => Promise<T>, now = Date.now): () => Promise<T> {
+  let at = 0;
+  let value: Promise<T> | undefined;
+  return () => {
+    if (!value || now() - at >= ms) {
+      at = now();
+      value = read();
+      value.catch(() => {
+        value = undefined;
+      });
+    }
+    return value;
+  };
+}
+
+type ShopPolicy = {
+  floors: { asset: unknown; min: string }[];
+  split: { account: string; bps: number }[];
+  delivery_s: number;
+  frozen: boolean;
+};
+
+const FRESH_MS = 5_000;
+
 export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<number[]> } {
   const one = serial();
+  const policy = cached(FRESH_MS, () => d.shop.policy() as Promise<ShopPolicy>);
+  const recent = cached(FRESH_MS, () =>
+    Promise.all([d.shop.recentOrders(50), d.shop.recentRequests(50)]),
+  );
+  const orders = cached(FRESH_MS, () => allOrders(d.shop));
   const tick = () =>
     one(async () => {
       const delivered = await deliverPaid(d);
@@ -58,21 +91,16 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     const path = url.pathname.slice("/api/shop".length);
 
     if (method === "GET" && path === "/status") {
-      const policy = (await d.shop.policy()) as {
-        floors: { asset: unknown; min: string }[];
-        split: { account: string; bps: number }[];
-        delivery_s: number;
-        frozen: boolean;
-      };
+      const p = await policy();
       return {
         status: 200,
         data: {
           account: d.shop.accountId,
           listPriceNear: LIST_PRICE_NEAR,
-          floor: policy.floors.find((f) => f.asset === "Near")?.min ?? null,
-          split: policy.split,
-          deliverySeconds: policy.delivery_s,
-          frozen: policy.frozen,
+          floor: p.floors.find((f) => f.asset === "Near")?.min ?? null,
+          split: p.split,
+          deliverySeconds: p.delivery_s,
+          frozen: p.frozen,
           checks: d.reports.all().length,
         },
       };
@@ -88,14 +116,11 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     }
 
     if (method === "GET" && path === "/ledger") {
-      const [orders, spends] = await Promise.all([
-        d.shop.recentOrders(50),
-        d.shop.recentRequests(50),
-      ]);
+      const [latest, spends] = await recent();
       return {
         status: 200,
         data: {
-          orders: orders.map(([id, o]: [number, Order]) => ({
+          orders: latest.map(([id, o]: [number, Order]) => ({
             id,
             ...o,
             verdict: d.reports.get(id)?.verdict.level ?? null,
@@ -150,24 +175,17 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     }
 
     if (method === "GET" && path === "/range" && d.attempts) {
-      const [policy, orders] = await Promise.all([
-        d.shop.policy() as Promise<{
-          floors: { asset: unknown; min: string }[];
-          split: { account: string; bps: number }[];
-          frozen: boolean;
-        }>,
-        allOrders(d.shop),
-      ]);
-      const floor = policy.floors.find((f) => f.asset === "Near")?.min ?? "0";
+      const [p, all] = await Promise.all([policy(), orders()]);
+      const floor = p.floors.find((f) => f.asset === "Near")?.min ?? "0";
       return {
         status: 200,
         data: {
           account: d.shop.accountId,
           listPriceNear: LIST_PRICE_NEAR,
           floor,
-          split: policy.split,
-          frozen: policy.frozen,
-          ...scoreboard(orders, BigInt(floor), policy.split),
+          split: p.split,
+          frozen: p.frozen,
+          ...scoreboard(all, BigInt(floor), p.split),
           stats: d.attempts.summary(),
           recent: d.attempts.recent(10),
         },

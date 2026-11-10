@@ -87,7 +87,6 @@ body {
 /* Inner scroll areas such as chats; Lenis is told to leave their wheel events alone. */
 @utility scroll-box {
   overflow-y: auto;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-paper) 22%, transparent) transparent;
 }

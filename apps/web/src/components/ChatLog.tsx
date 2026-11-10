@@ -30,7 +30,6 @@ export function ChatLog({
   return (
     <div
       ref={box}
-      data-lenis-prevent
       onScroll={(e) => {
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;

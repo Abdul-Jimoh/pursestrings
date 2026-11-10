@@ -20,7 +20,9 @@ export function lockScroll(locked: boolean) {
 export function SmoothScroll() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const l = new Lenis({ lerp: 0.1, wheelMultiplier: 1 });
+    // Nested scroll lets a chat box scroll natively while it can, and hands the wheel back to
+    // the page at its top or bottom instead of swallowing it.
+    const l = new Lenis({ lerp: 0.1, wheelMultiplier: 1, allowNestedScroll: true });
     lenis = l;
     l.on("scroll", ScrollTrigger.update);
     const tick = (time: number) => l.raf(time * 1000);
