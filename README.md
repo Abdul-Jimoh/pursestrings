@@ -2,214 +2,238 @@
 
 # Pursestrings
 
-One spending policy for an AI agent across every chain. Jailbreak the agent and the money still doesn't move.
+AI agents that run a business and a community fund on NEAR, where the money only moves by rules
+a contract enforces. Talk the agent into anything; the contract still decides.
 
 [![CI](https://github.com/Abdul-Jimoh/pursestrings/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
-· [pursestrings.site](https://pursestrings.site) · [The Range](https://pursestrings.site/range) · [Dashboard](https://pursestrings.site/app) · [Threat model](THREAT_MODEL.md)
+· [pursestrings.site](https://pursestrings.site) · [The shop](https://pursestrings.site/shop)
+· [Its ledger](https://pursestrings.site/shop/ledger) · [Bounties](https://pursestrings.site/bounties)
+· [The Range](https://pursestrings.site/range) · [Threat model](THREAT_MODEL.md)
 
-## The problem
+## In one minute
 
-An agent that holds a wallet key can spend everything that key reaches. Prompt injection, a poisoned
-tool result or a runaway loop all look like the agent's own decisions, and a system prompt is not a
-limit. Making a human approve every payment fixes that, but then the agent isn't autonomous.
-
-## What Pursestrings does
-
-The agent gets no key that can move money. It gets a NEAR access key that can only call
-`request_spend` on its Pursestrings account, a contract the owner controls. The contract checks
-each request against the owner's policy and pays it itself:
-
-- **On NEAR**, as a native or NEP-141 transfer ([spend.rs](contracts/pursestrings/src/spend.rs#L170)).
-- **On any EVM chain**, by building the EIP-1559 transaction from typed fields
-  ([evm.rs:99](contracts/pursestrings/src/evm.rs#L99)) and having NEAR's MPC network sign it for
-  the account's own derived address through Chain Signatures
-  ([evm.rs:354](contracts/pursestrings/src/evm.rs#L354)).
-- **Through NEAR Intents**, with transfers and withdrawals called directly on `intents.near` and
-  swaps signed as a `token_diff` the contract wrote itself
-  ([intents.rs:128](contracts/pursestrings/src/intents.rs#L128)).
-
-The policy has per-payment caps, rolling windows per asset, budget groups that share one window
-across chains ([policy.rs:53](contracts/pursestrings/src/policy.rs#L53)), recipient and chain
-allowlists, a co-sign line, minimum swap rates, a velocity limit and a fee budget. Making the
-policy stricter applies at once. Making it looser waits out a timelock. Every request, decision
-and execution is a NEP-297 event ([events.rs](contracts/pursestrings/src/events.rs#L10)).
-
-The seven security invariants, where each is enforced and the test that checks it, are in
-[THREAT_MODEL.md](THREAT_MODEL.md).
-
-### How a payment flows
-
-The agent sends structured fields. Everything that gets signed is built inside the contract.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant A as Agent (LLM)
-    participant P as Pursestrings contract (NEAR)
-    participant M as NEAR MPC network
-    participant R as Relayer (untrusted)
-    participant B as Base
-
-    A->>P: request_spend { asset, amount, dest, purpose }
-    Note over P: Check caps, windows, allowlists, velocity.<br/>Reserve the budget.
-    alt Denied
-        P-->>A: Denied { reason } (logged as an event)
-    else Over the co-sign line
-        P-->>A: NeedsCosign: waits for the owner
-    else Approved, EVM payment
-        P->>P: Build the EIP-1559 transaction from the fields
-        P->>M: sign(hash of that transaction)
-        M-->>P: signature
-        P-->>A: Approved, signed
-        R->>P: read the signed transaction
-        R->>B: broadcast
-        Note over R,B: The relayer can delay it,<br/>but can't change or redirect it.
-        R->>P: confirm_evm (anyone can call)
-        P->>M: verify_foreign_transaction
-        M-->>P: final and succeeded
-        Note over P: Request Done, and the budget stays spent.
-    end
-```
-
-### Who can do what
+- **An agent runs a shop.** It sells *Check before you pay*: a plain-English verdict on a NEAR
+  account or 0x address before you send it money. It haggles, quotes, delivers and refunds on its
+  own, and pays its own model costs.
+- **A DAO runs a bounty board.** People are paid for reporting scam addresses. A second agent
+  reviews each report and asks for the payout; how much it can pay without a human depends on
+  the reporter's track record.
+- **The two feed each other.** 20% of every sale goes to the DAO, and every paid report makes the
+  shop's next check smarter.
+- **Neither agent holds money.** Each has a NEAR key that can only *ask* a Pursestrings contract.
+  The floor price, the revenue split, refund limits, who may approve a payout and every spending
+  limit live in the contract, so a jailbroken agent can agree to anything and still move nothing
+  outside them.
 
 ```mermaid
 flowchart LR
-    agent["Agent<br/>function-call key:<br/>request_spend, cancel_request"]
-    owner["Owner<br/>their own wallet"]
-    anyone["Anyone"]
-    contract[("Pursestrings account<br/>no full-access key")]
-    factory["Factory<br/>keys deleted after init"]
-
-    agent -- "asks" --> contract
-    owner -- "approves, tightens, freezes,<br/>proposes loosening (timelocked)" --> contract
-    anyone -- "settlement proofs,<br/>checked by the MPC network" --> contract
-    factory -- "creates; publishes code hashes<br/>the owner may migrate to" --> contract
+    buyer(["Buyer"]) -- "haggles, pays" --> shop["Shop agent"]
+    shop -- "quote / deliver / refund" --> sc[("Shop contract<br/>floor · held payment · split")]
+    sc -- "70%" --> owner(["Owner"])
+    sc -- "20%" --> dao[("Community DAO<br/>Sputnik v3.2")]
+    sc -- "pays its own<br/>model costs" --> ops(["Model credits"])
+    dao -- "owns, funds,<br/>votes big payouts" --> bc[("Bounty contract<br/>earned-trust tiers")]
+    reporter(["Reporter"]) -- "claims, reports a scam" --> bc
+    bagent["Bounty agent"] -- "reviews, requests payout" --> bc
+    bc -- "paid reports =<br/>scam list" --> shop
 ```
 
-### Changing the rules
+## Try it
 
-```mermaid
-flowchart LR
-    change["Owner signs a change"] --> stricter{"Stricter than<br/>the current policy?"}
-    stricter -- "yes: lower caps, fewer recipients,<br/>freeze, revoke" --> now["Applies in the same transaction"]
-    stricter -- "no: anything looser" --> queue["Queued with an ETA"]
-    queue -- "timelock passes" --> apply["Owner applies it"]
-    queue -- "any time before" --> cancel["Owner cancels it"]
-```
-
-## Try it: do X, see Y
-
-You need `cargo` (rustup reads [rust-toolchain.toml](rust-toolchain.toml)), Node 22+ and pnpm 10.
-No keys, accounts or network access to NEAR are needed: everything runs on a local sandbox.
+**From a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
+[rust-toolchain.toml](rust-toolchain.toml)), Node 22+ and pnpm 10.
 
 | Do | See |
 |---|---|
-| `make demo` | A local chain at mainnet's protocol version with the factory, three keyless accounts, the mainnet `intents.near` and Sputnik DAO wasm, test tokens and a mock MPC signer. The demo agent pays a NEAR service, pays a Base merchant (the signed transaction's sender recovers to the account's own address) and swaps through Intents from one $150/day budget, then runs six attacks and a co-sign. Then the shop: the agent can't quote under the owner's floor, a buyer pays, the check is delivered with its hash on-chain and the sale splits to the owner and the community DAO. The DAO's bounty board pays scam reports by earned trust (one council member for a newcomer, nobody once trusted, a DAO vote above the council's limit, never the approver's own payout), and the shop's next check finds the reported address. It ends with the kill switch and `demo OK: 37/37 checks passed` ([demo.ts](apps/agent/src/demo.ts)). |
-| `make redteam` | Six attacks with the same output every run, compared against [expected.txt](scripts/redteam/expected.txt) ([redteam.ts](apps/agent/src/redteam.ts)). |
-| `make test` | Contract unit tests, sandbox tests for every invariant, and the TypeScript tests. |
-| `make demo-keep` | The same demo, with the local chain left running afterwards. |
-| Open [pursestrings.site/range](https://pursestrings.site/range) | A deliberately gullible agent guarding a testnet account. Talk it into anything; the contract decides. |
-| Open [pursestrings.site/app](https://pursestrings.site/app) | The testnet Range account's policy, budgets, timelock queue and payments, read live from the chain. |
+| `make demo` | A local NEAR chain at mainnet's protocol version, then the whole story with do-X-see-Y checks ([demo.ts](apps/agent/src/demo.ts)): an agent pays on NEAR, on Base through Chain Signatures and through NEAR Intents from one budget, and survives six attacks. The shop refuses a quote under its floor, holds a payment, delivers the check with its hash on-chain and splits the sale. The DAO's board pays scam reports by earned trust and refuses a council member's payout to themselves. The shop's next check finds the reported address. Ends with `demo OK: 37/37 checks passed`. |
+| `make redteam` | Six attacks, compared line for line with [expected.txt](scripts/redteam/expected.txt). |
+| `make test` | Contract unit and property tests, sandbox tests for every invariant (against the real mainnet `intents.near` and Sputnik DAO code), and the TypeScript tests. |
 
-## Pieces
+**Live on NEAR testnet:**
 
-| Path | What it is |
+| Open | Do |
 |---|---|
-| [contracts/pursestrings](contracts/pursestrings) | The policy contract (near-sdk 5.29) |
-| [contracts/factory](contracts/factory) | Creates accounts with no access keys and publishes the code hashes they may migrate to |
-| [packages/sdk](packages/sdk) | TypeScript SDK: agent, owner and anyone calls, views, signed-transaction decoding |
-| [packages/mcp](packages/mcp/src/server.ts) | MCP server for any agent: `request_spend`, `budget_status`, `explain_denial`, `spending_policy`, `request_status`. Runs with the agent key only |
-| [services/relayer](services/relayer/src/relayer.ts) | Broadcasts signed EVM transactions and swaps, and submits settlement proofs. Holds no keys that matter: it can delay a payment but can't change one |
-| [apps/agent](apps/agent/src) | The scripted demo agent and the red-team suite |
-| [apps/range](apps/range/src) | The Range backend: an LLM agent (Claude Haiku 5.5 on NEAR AI Cloud) on the MCP tools, NEP-413 sign-in, per-account rate limits and a daily model-cost cap |
-| [apps/web](apps/web/src) | pursestrings.site: landing page, the Range and the owner dashboard |
+| [/shop](https://pursestrings.site/shop) | Haggle for a check, pay from your wallet, watch the contract hold the money and pay it out on delivery. |
+| [/range](https://pursestrings.site/range) | Try to get a check for less than the contract allows. The front desk is soft on purpose: it agrees to any price and refunds anyone. |
+| [/bounties](https://pursestrings.site/bounties) | Claim a bounty, report a scam address, see the agent's review and who has to approve your payout. |
+| [/shop/ledger](https://pursestrings.site/shop/ledger) | Every order, payout and refusal, read from the chain, and the 1,000-attack marathon. |
 
-## NEAR technology used
+## What the agents can't do
 
-- **Function-call access keys** with a gas allowance: the agent's key is limited by the protocol to
-  two methods on one account ([admin.rs:28](contracts/pursestrings/src/admin.rs#L28)).
-- **Chain Signatures**: `sign` in ECDSA mode for EVM transactions and EdDSA mode for intents,
-  `derived_public_key` for the account's Intents key
-  ([intents.rs:176](contracts/pursestrings/src/intents.rs#L176)), and `verify_foreign_transaction`
-  so the contract learns that a Base payment is final and succeeded without trusting anyone
-  ([evm.rs:203](contracts/pursestrings/src/evm.rs#L203)).
-- **NEAR Intents**: `add_public_key`, `mt_transfer`, `ft_withdraw`, signed `raw_ed25519` swaps with
-  versioned nonces, and `is_nonce_used` for settlement. Tested against the mainnet `intents.near`
-  v0.4.5 wasm ([tests/intents.rs](contracts/pursestrings/tests/intents.rs)).
-- **Sub-accounts from a factory**: `<name>.<factory>` with no access keys at all
-  ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)).
-- **NEP-297 events, NEP-141 tokens, NEP-413 signed messages** (Range sign-in).
-- **NEAR AI Cloud** for the Range agent's model.
+The shop's agent has a function-call key limited to five methods
+([admin.rs:30](contracts/pursestrings/src/admin.rs#L30)). Each rule below is enforced in the
+contract and tested.
 
-## Why only on NEAR
+| However it's talked into it, the agent can't… | Because | Test |
+|---|---|---|
+| Sell below the owner's floor | `quote` refuses and logs it ([sales.rs:115](contracts/pursestrings/src/sales.rs#L115)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L106) |
+| Keep a payment without delivering | Payments are held until `deliver`; after the delivery window the buyer takes it back, even if the shop is frozen ([sales.rs:267](contracts/pursestrings/src/sales.rs#L267)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L182) |
+| Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:478](contracts/pursestrings/src/sales.rs#L478)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L246) |
+| Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:363](contracts/pursestrings/src/policy.rs#L363)) | [`near_payments_split_exactly_and_redirecting_revenue_waits`](contracts/pursestrings/tests/shop.rs#L228) |
+| Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:183](contracts/pursestrings/src/bounty.rs#L183) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L69) |
+| Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L292)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
 
-- A NEAR access key can be limited by the protocol to specific methods on one contract, with a gas
-  allowance. The agent's key isn't trusted to behave; it can't do anything else.
-- A NEAR contract controls addresses on other chains through Chain Signatures, so one contract can
-  hold the policy for NEAR, Base and any other EVM chain, and sign only what it built.
-- The same contract is an identity on NEAR Intents, so swaps and cross-chain withdrawals go through
-  the same policy.
-- The MPC network can attest that a foreign transaction is final and succeeded, so the policy's
-  books close on-chain without an oracle or a trusted relayer.
+The agents' judgement is kept away from the money too. The checks' verdicts come from fixed
+rules and the model only writes the explanation ([check.ts](apps/shop/src/check.ts)). The bounty
+agent's rules decide whether a report qualifies, and the model may only veto
+([board.ts](apps/shop/src/board.ts)).
 
-## Compared to other approaches
+## Earned trust, and the DAO above it
 
-| | Agent holds a wallet key | Policy enforced by a hosted wallet service | Smart-account session keys | Pursestrings |
-|---|---|---|---|---|
-| Where limits are enforced | Nowhere | The vendor's servers or MPC nodes | A contract on one chain | A public contract on NEAR |
-| Chains covered | One per key | Whatever the vendor supports | That chain | NEAR, EVM chains through Chain Signatures, NEAR Intents |
-| What a compromised agent can sign | Anything | What the vendor's policy allows | What the session key allows | Nothing: the contract builds every payload |
-| Who you trust | Nobody can stop the key | The vendor | The account's code | The contract's code and NEAR's MPC network |
-| Changing the rules | Not applicable | The vendor's admin tools | Owner transaction | Owner transaction; loosening is time-locked |
+Who approves a bounty payout depends on how many paid reports the reporter already has. Points
+come only from paid bounties, and each traces back to its bounty
+([bounty.rs:164](contracts/pursestrings/src/bounty.rs#L164)).
 
-## Verify it yourself
+| Reporter's points | Paid with no approval | One council member can approve | Above that |
+|---|---|---|---|
+| 0 (newcomer) | nothing | up to 0.3 NEAR | the DAO votes |
+| 1 | up to 0.1 NEAR | up to 0.5 NEAR | the DAO votes |
+| 3 | up to 0.3 NEAR | up to 1 NEAR | the DAO votes |
 
-Testnet. Every NEAR transaction opens on [nearblocks](https://testnet.nearblocks.io); EVM ones on
-[Base Sepolia's explorer](https://sepolia.basescan.org).
+These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testnet-setup.ts)).
 
-| Claim | Where to look |
+- **Council members can't approve their own payouts** ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213)).
+- **Any council member can freeze the board at once**
+  ([admin.rs:81](contracts/pursestrings/src/admin.rs#L81)). Unfreezing, adding a council member
+  or raising a tier waits for a DAO vote and then the timelock
+  ([`any_council_member_freezes_and_only_the_dao_loosens_after_the_timelock`](contracts/pursestrings/tests/board.rs#L137)).
+- **The DAO is the real mainnet Sputnik v3.2 code**, in the sandbox tests and on testnet.
+
+## How hard it's been pushed
+
+```mermaid
+pie showData
+    title 1,000 attacks on the testnet shop and bounty board, all refused
+    "Fooled agent: refused and logged on-chain" : 652
+    "Outsider: transaction failed as expected" : 322
+    "Agent key misuse: refused by NEAR itself" : 26
+```
+
+- **Attack marathon:** 1,000 scripted attacks on testnet, as a fooled agent with a real key and
+  as an outsider. Every refusal is either a decision the contract logged or a failure with the
+  reason expected for that attack ([marathon.ts](apps/shop/scripts/marathon.ts), results with
+  sample transactions in [marathon.json](apps/web/public/marathon.json)).
+- **Property tests:** random policies and random histories of requests, approvals, rejections,
+  refunds and deliveries, checked against a plain model of the rules, 10,000 cases each in CI
+  ([props.rs](contracts/pursestrings/src/props.rs)). Breaking any one rule in the contract makes
+  them fail. Writing them found a real bug: a partial refund before delivery could sell a check
+  below the floor. It's fixed, and the live shop was upgraded
+  ([`2WQLJ5nt…`](https://testnet.nearblocks.io/txns/2WQLJ5ntxuhvyULmJngVehA6Q7nk2vaYiirr4thEDQ5m)).
+- **The Range:** a public page where anyone can try to talk the agents into breaking the rules
+  ([pursestrings.site/range](https://pursestrings.site/range)). Its hall of fame is computed
+  from the chain.
+
+## The engine underneath
+
+Both businesses run on Pursestrings, a general spending policy for an agent across every chain it
+touches. The agent sends structured fields; everything that gets signed is built inside the
+contract.
+
+- **On NEAR:** native and NEP-141 transfers ([spend.rs](contracts/pursestrings/src/spend.rs#L170)).
+- **On any EVM chain:** the contract builds the EIP-1559 transaction
+  ([evm.rs:99](contracts/pursestrings/src/evm.rs#L99)) and NEAR's MPC network signs it for the
+  account's own derived address ([evm.rs:354](contracts/pursestrings/src/evm.rs#L354)).
+- **Through NEAR Intents:** direct transfers and withdrawals, and swaps signed as a `token_diff`
+  the contract wrote ([intents.rs:128](contracts/pursestrings/src/intents.rs#L128)).
+
+One budget can span all three ([policy.rs:53](contracts/pursestrings/src/policy.rs#L53)).
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant P as Pursestrings contract
+    participant M as NEAR MPC network
+    participant R as Relayer (untrusted)
+    participant B as Base
+    A->>P: request_spend { asset, amount, dest, purpose }
+    Note over P: caps, windows, allowlists, velocity.<br/>Reserve the budget.
+    alt refused
+        P-->>A: Denied { reason }, logged
+    else approved, EVM
+        P->>P: build the transaction from the fields
+        P->>M: sign
+        M-->>P: signature
+        R->>B: broadcast (can delay, can't change it)
+        R->>P: confirm_evm (anyone can call)
+        P->>M: verify_foreign_transaction
+        Note over P: Done: final and succeeded, proven on-chain
+    end
+```
+
+Rules have two speeds. Making the policy stricter (lower caps, fewer recipients, a higher floor,
+freezing, revoking an agent) applies in the same transaction. Making it looser is queued behind
+a timelock that the owner can cancel. Code changes follow the same path, to hashes the factory
+published. The seven security invariants, where each is enforced and the test for each, are in
+[THREAT_MODEL.md](THREAT_MODEL.md).
+
+## Verify it on testnet
+
+| Claim | Transaction |
 |---|---|
-| The Range account has no access keys except the agent's function-call key | [range.factory.ps-spike-1028.testnet](https://testnet.nearblocks.io/address/range.factory.ps-spike-1028.testnet), access keys tab |
-| A fooled agent's payment to an attacker is refused and recorded | [`C7KyrKfs…`](https://testnet.nearblocks.io/txns/C7KyrKfsHrUHKd4ZesuEk7dJQpjN8K3D3sbYukvdeHXu): `spend_requested` event, `Denied { RecipientNotAllowed }` |
-| A Base payment built and signed by the contract settles | Request [`Eq88EDmC…`](https://testnet.nearblocks.io/txns/Eq88EDmCPredJZYt8bq4Y9W3vJujwLc4Yis29Nqx9j5d), Base Sepolia [`0x0d5615a2…3e73`](https://sepolia.basescan.org/tx/0x0d5615a263515af48ff4aca3eef4ffbca84cc7519297c5f9cbc074efc1213e73) |
-| A third party proves that Base payment final through the MPC network | [`E9Npn91h…`](https://testnet.nearblocks.io/txns/E9Npn91hN8RezZhamw41tg7BRtdEEW7ztM5svCvZec9W): `confirm_evm(0)` by another account; the contract asks `verify_foreign_transaction` and marks the request `Done` |
-| Red-team case 6: a legitimate 40 USDC to the Base merchant, end to end | Request [`6tZx8ojH…`](https://testnet.nearblocks.io/txns/6tZx8ojHjogyKUbBgH2j2ZYbQmvZL85DvRna29JR9Y8J), Base Sepolia [`0x0b9ca7be…7bbb`](https://sepolia.basescan.org/tx/0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb), proven final by a third party in [`6to9rRaQ…`](https://testnet.nearblocks.io/txns/6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv) |
-| Code changes only to a factory-published hash, after the timelock | Publish [`A4mcn6No…`](https://testnet.nearblocks.io/txns/A4mcn6No1wbvqRXwwcPMQXnUzianv97yHZH5GpRqXV9c), propose [`HnLFxKy2…`](https://testnet.nearblocks.io/txns/HnLFxKy2HuoQwUP4gsc4MpGrFGQ4mJmyB8kB7G3C7MJo), apply an hour later [`3DepsqBc…`](https://testnet.nearblocks.io/txns/3DepsqBcV3ckGu9LVgAeHS2KAoucmLDYRPcY21MD6UhT) |
+| The shop refuses a quote under its floor, and logs it | [`461xPH21…`](https://testnet.nearblocks.io/txns/461xPH21n9kN75WkgTjSdCgKGTvVJApG8VNMN4KKLukb): `Denied { BelowFloor }`, from a Range player's "I'm a student, 0.001 NEAR?" |
+| A refund larger than the shop's kept share is refused | [`B5SxYYq2…`](https://testnet.nearblocks.io/txns/B5SxYYq2MDugEND657AYGaZaFEENQYfv5pgF4yr85tCv): 0.1 NEAR asked on a 0.05 order, `OverHeld { max: 0.005 }` |
+| A sale: quoted, paid and held, then delivered and split | Quote [`8BznUKJr…`](https://testnet.nearblocks.io/txns/8BznUKJr1DscecbekyqYGxj8daYoXdSoW2M4xGbmtZ2V), payment held [`FV91MggJ…`](https://testnet.nearblocks.io/txns/FV91MggJA6xYXVnfyDHgbc9G5DJok1LhL3D5EUX7PMdx); the order and its receipt on the [ledger](https://pursestrings.site/shop/ledger) |
+| A newcomer's payout waits for one council member | Request [`DMquHs3k…`](https://testnet.nearblocks.io/txns/DMquHs3keecWDoHe7Mo8TKGS6XgBXaSaNczr1Kv1ZsnG) `NeedsCouncil`, approval [`ECWhQFh5…`](https://testnet.nearblocks.io/txns/ECWhQFh5iy16bx3cveNRj1VCdR7Dz5zcVXH8T4duh8pH) |
+| One point later, the next small payout needs nobody | [`GEwyjgpC…`](https://testnet.nearblocks.io/txns/GEwyjgpCZUpxdykEaG7qSSGyDrGGY3zKhHMS5E2CiebH): `Approved` |
+| A Base payment built by the contract, signed by the MPC network, proven final by a third party | Request [`6tZx8ojH…`](https://testnet.nearblocks.io/txns/6tZx8ojHjogyKUbBgH2j2ZYbQmvZL85DvRna29JR9Y8J), Base Sepolia [`0x0b9ca7be…7bbb`](https://sepolia.basescan.org/tx/0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb), proof [`6to9rRaQ…`](https://testnet.nearblocks.io/txns/6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv) |
+| Code changes only to a published hash, after the timelock | Shop: publish [`F1Kb3W9V…`](https://testnet.nearblocks.io/txns/F1Kb3W9Vv1QSe8NdEZZ7HgjioVuo3q9hNnCuVBhmT32R), propose [`4HxtK6j2…`](https://testnet.nearblocks.io/txns/4HxtK6j2y6nfX43syVMKRrvStjKspNcU9Pb2jCzTPK8a), apply an hour later [`2WQLJ5nt…`](https://testnet.nearblocks.io/txns/2WQLJ5ntxuhvyULmJngVehA6Q7nk2vaYiirr4thEDQ5m) |
+| The accounts can't be changed by a key | [shop](https://testnet.nearblocks.io/address/shop.factory.ps-spike-1028.testnet) and [bounties](https://testnet.nearblocks.io/address/bounties.factory.ps-spike-1028.testnet): only agent function-call keys, no full-access key |
 
-## Costs
+## Built on NEAR, and why it has to be
 
-On testnet the Range account uses 443,759 bytes of storage, about 4.4 NEAR of storage stake, almost
-all of it the 439 KB contract. Gas for each request comes out of the agent key's allowance (1 NEAR
-on the Range account), and deposits the contract attaches, such as MPC signing fees, come out of the
-policy's fee budget, so a compromised agent can't drain NEAR through fees
-([`fee_budget_caps_contract_paid_deposits`](contracts/pursestrings/src/spend.rs#L676),
-[`evm_gas_budget_stops_fee_spam`](contracts/pursestrings/tests/evm.rs#L311)).
-Mainnet costs will be measured and listed here.
+| NEAR feature | What it does here |
+|---|---|
+| Function-call access keys | The protocol itself limits each agent key to a few methods on one account, with a gas allowance |
+| Chain Signatures | One contract controls addresses on other chains and signs only what it built (`sign`); `verify_foreign_transaction` proves a Base payment final without an oracle ([evm.rs:203](contracts/pursestrings/src/evm.rs#L203)) |
+| NEAR Intents | The same account is an identity on `intents.near`: transfers, withdrawals and contract-built swaps under the same policy ([tests/intents.rs](contracts/pursestrings/tests/intents.rs), mainnet v0.4.5 code) |
+| Sputnik DAO | Owns the bounty board; votes payouts above the council's limit and every loosening |
+| Factory sub-accounts | `<name>.<factory>` with no access keys at all ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)) |
+| NEP-141, NEP-297, NEP-413 | Token payments, an event for every decision, wallet sign-in |
+| NEAR AI Cloud | The agents' model (Claude Haiku 5.5) |
+
+On other chains you'd get one of these at a time: a key limited by the protocol, a contract that
+signs on other chains, a cross-chain intent identity and a DAO owner. On NEAR they're one account.
 
 ## Sustainability
 
-The people who pay are agent platforms and businesses that run agents with money. Pricing would be
-a per-account subscription or a small fee on governed volume. Nothing
-in the payment path needs a server of ours: the relayer is replaceable, and settlement proofs can
-be submitted by anyone.
+The shop is the business model, running: each sale pays the owner 70%, the community 20% and
+keeps 10% for refunds. The agent pays its own model costs back out of those earnings, as a
+`request_spend` under the same policy ([costs.ts](apps/shop/src/costs.ts),
+[tests](apps/shop/src/costs.test.ts)). The community share funds the bounties that
+make the product better. The same engine can run other agent businesses that have to be trusted
+with money. Nothing in the payment path needs our server: the relayer is replaceable, and anyone
+can submit settlement proofs.
 
 ## Limitations
 
-- **No risk screener.** Invariant 5 isn't built. A rule's risk threshold sends the request to the
-  owner's co-sign instead.
-- **No USD budgets.** Budgets are in each asset's own units. A budget group joins assets the owner
-  declares to be the same unit (USDC on NEAR, Base and Intents); there's no price oracle.
-- **Intents has no testnet.** The Intents paths are tested in the sandbox against the mainnet
-  `intents.near` wasm. A live mainnet swap needs the solver relay and hasn't run yet.
-- **The relayer can delay.** It can't redirect or change a payment, but a signed EVM transaction
-  keeps its budget reserved until it's proven settled or replaced.
-- **Finality lag.** The MPC network confirms a Base Sepolia payment several minutes to half an
-  hour after the public `finalized` head passes it.
-- **The owner key is powerful.** A stolen owner key can't loosen the policy quickly, but it can
-  approve pending co-signs and withdraw to the owner account.
-- **Reverted EVM transactions** and chains the MPC network can't verify fall back to the owner's
-  word (`resolve_evm`).
+- **The live bounty board runs older code.** Its owner is the DAO, and a 573 KB upgrade can't
+  fit in one DAO proposal's 300 Tgas. The fix is that anyone can now deliver code once the
+  owner's timelocked upgrade is due, but the old code can't take it. On that board a council
+  member could still approve their own payout; the sandbox tests and `make demo` run the fixed
+  code.
+- **Testnet only so far.** The mainnet run is still to come. Intents has no testnet, so its paths
+  are tested in the sandbox against the mainnet `intents.near` code.
+- **No risk screener** (invariant 5): a risk threshold sends the request to the owner instead.
+- **No USD budgets:** limits are in each asset's own units, with no price oracle.
+- **The relayer can delay** an EVM payment but can't change it. A signed transaction keeps its
+  budget reserved until it's proven settled or replaced.
+- **A stolen owner key** can't loosen anything quickly, but it can approve pending requests and
+  withdraw to the owner's own account.
+
+## Repository
+
+| Path | What it is |
+|---|---|
+| [contracts/pursestrings](contracts/pursestrings) | The policy contract: spending, the shop, the bounty board (near-sdk 5.29) |
+| [contracts/factory](contracts/factory) | Creates keyless accounts and publishes the code hashes they may upgrade to |
+| [apps/shop](apps/shop/src) | The shop agent, the checks, delivery, the bounty agent and the cost payments |
+| [apps/range](apps/range/src) | The API on Fly: the agents' model, NEP-413 sign-in, rate limits, a daily model-cost cap |
+| [apps/web](apps/web/src) | pursestrings.site |
+| [apps/agent](apps/agent/src) | `make demo` and `make redteam` |
+| [packages/sdk](packages/sdk), [packages/mcp](packages/mcp/src/server.ts) | TypeScript SDK; MCP server so any agent can use a Pursestrings account with only its agent key |
+| [services/relayer](services/relayer/src/relayer.ts) | Broadcasts signed EVM transactions and swaps, submits settlement proofs; holds nothing that matters |
+
+How to check each claim is in [AGENTS.md](AGENTS.md).
 
 ## License
 

@@ -6,7 +6,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 
 | Path | Language | What it is |
 |---|---|---|
-| `contracts/pursestrings/src` | Rust, near-sdk 5.29 | The policy contract. `spend.rs` (request_spend, evaluation, reservations), `policy.rs` (policy, ops, `classify`), `admin.rs` (owner methods, timelock, migration), `evm.rs` (EIP-1559 building, Chain Signatures, settlement proofs), `intents.rs` (NEAR Intents), `ring.rs` (rolling windows), `events.rs` (NEP-297) |
+| `contracts/pursestrings/src` | Rust, near-sdk 5.29 | The policy contract. `spend.rs` (request_spend, evaluation, reservations), `policy.rs` (policy, ops, `classify`), `admin.rs` (owner methods, timelock, migration), `evm.rs` (EIP-1559 building, Chain Signatures, settlement proofs), `intents.rs` (NEAR Intents), `sales.rs` (the shop: quotes, held payments, split, refunds), `bounty.rs` (bounties, points, trust tiers), `ring.rs` (rolling windows), `events.rs` (NEP-297), `props.rs` (property tests) |
 | `contracts/pursestrings/tests` | Rust | Sandbox tests: a local NEAR node at mainnet's protocol version. `common/` starts it and deploys the contracts |
 | `contracts/factory` | Rust | Creates keyless accounts; the admin can only append code hashes |
 | `contracts/test-token`, `contracts/test-mpc` | Rust | A NEP-141 token and a mock MPC signer for tests and the demo |
@@ -15,8 +15,9 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 | `packages/mcp` | TypeScript | MCP server exposing the agent's tools |
 | `services/relayer` | TypeScript | Broadcasts signed EVM transactions, publishes swaps, submits settlement proofs |
 | `apps/agent` | TypeScript | `demo.ts` (the scripted demo) and `redteam.ts` (six attacks) |
-| `apps/range` | TypeScript | The Range API: an LLM agent on the MCP tools, sign-in and limits |
-| `apps/web` | TypeScript, Next.js 16 | pursestrings.site: landing page, `/range`, `/app` (owner dashboard) |
+| `apps/shop` | TypeScript | The shop agent (`seller.ts`), checks (`check.ts`), delivery (`deliver.ts`), the bounty agent (`board.ts`), cost payments (`costs.ts`), the Range shop challenge (`range.ts`). `scripts/` hold testnet setup, loops, upgrades and the attack marathon, which need local testnet keys |
+| `apps/range` | TypeScript | The API on Fly: the Range, the shop and board routes, sign-in and limits |
+| `apps/web` | TypeScript, Next.js 16 | pursestrings.site: landing page, `/shop`, `/shop/ledger`, `/bounties`, `/range`, `/app` (owner dashboard) |
 
 ## Commands
 
@@ -36,7 +37,9 @@ account, keys or network. Sandbox tests download a `near-sandbox` binary on firs
    it and the sandbox test that checks it.
 2. Run that test alone, for example
    `cargo test -p pursestrings --test invariants inv3_loosening_waits_tightening_is_instant`.
-3. For live behaviour, use the testnet transactions in the README's "Verify it yourself" table. Any
+   Property tests run with the unit tests; `PROPTEST_CASES=1000000 cargo test -p pursestrings --lib props`
+   runs a million cases.
+3. For live behaviour, use the testnet transactions in the README's "Verify it on testnet" table. Any
    NEAR view method can be called without an account, for example
    `near contract call-function as-read-only range.factory.ps-spike-1028.testnet policy json-args {} network-config testnet now`.
 
