@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 CONTRACTS := pursestrings factory
 
-.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo demo-keep redteam judge
+.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo demo-keep redteam verify
 
 all: lint test
 
@@ -37,8 +37,8 @@ demo:
 	@scripts/with-devnet.sh demo
 
 # No chain, cargo-near or local node: the contract's tests, the services' tests and a recording of the demo.
-judge:
-	@scripts/judge.sh
+verify:
+	@scripts/verify.sh
 
 demo-keep:
 	@scripts/with-devnet.sh demo --keep

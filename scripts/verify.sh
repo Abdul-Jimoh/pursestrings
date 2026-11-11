@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 say() { printf '%s\n' "$*"; }
 rule() { say ""; say "== $*"; }
 
-command -v cargo >/dev/null || { say "make judge needs cargo (rustup reads rust-toolchain.toml)"; exit 1; }
+command -v cargo >/dev/null || { say "make verify needs cargo (rustup reads rust-toolchain.toml)"; exit 1; }
 
 rule "1. The contract's rules, as unit and property tests (no chain needed)"
 say "   running: cargo test -p pursestrings --lib (property tests at ${PROPTEST_CASES:=2000} cases each)"
@@ -82,7 +82,7 @@ rule "3. The whole story on a local chain: a recording of \`make demo\`"
 say "   make demo needs cargo-near and a local NEAR node; CI runs it on every push"
 say "   (the 'demo' job in .github/workflows/ci.yml). This is its output from a fresh clone:"
 say ""
-sed 's/^/   /' scripts/judge/demo-transcript.txt
+sed 's/^/   /' scripts/verify/demo-transcript.txt
 say ""
 say "   Live on NEAR testnet: https://pursestrings.site (shop, ledger, bounties, Range)."
 say "   Transactions for each claim: README.md, \"Verify it on testnet\"."

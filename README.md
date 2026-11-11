@@ -6,10 +6,11 @@ AI agents that run a business and a community fund on NEAR, where the money only
 a contract enforces. Talk the agent into anything; the contract still decides.
 
 Built at NEAR HACKATHON for **Autonomous Business**, **Social Money**, **Agent Economy** and
-**AI Security & Defense**. Many entries cap what an agent may spend. Here the capped agents run
-a shop that sells to the public and a fund owned by a DAO; the contract builds every payment
-itself, on NEAR, on Base through Chain Signatures and through NEAR Intents; and any rule change
-that loosens the policy waits out a public timelock. 1,000 attacks on testnet, none got through.
+**AI Security & Defense**. A spending cap alone doesn't make an agent safe to run a business, so
+here the capped agents run a shop that sells to the public and a fund owned by a DAO; the
+contract builds every payment itself, on NEAR, on Base through Chain Signatures and through NEAR
+Intents; and any rule change that loosens the policy waits out a public timelock. 1,000 attacks
+on testnet, none got through.
 
 [![CI](https://github.com/Abdul-Jimoh/pursestrings/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 · [pursestrings.site](https://pursestrings.site) · [The shop](https://pursestrings.site/shop)
@@ -46,10 +47,10 @@ flowchart LR
 
 ## Try it
 
-**Anywhere, no chain:** `make judge` needs only `cargo` (and Node 22+ with pnpm 10 for the
+**Anywhere, no chain:** `make verify` needs only `cargo` (and Node 22+ with pnpm 10 for the
 services). It runs the contract's unit and property tests and prints each claim beside the test
 that proves it, runs the TypeScript tests, then replays a recording of `make demo`
-([scripts/judge.sh](scripts/judge.sh), [the recording](scripts/judge/demo-transcript.txt)). It
+([scripts/verify.sh](scripts/verify.sh), [the recording](scripts/verify/demo-transcript.txt)). It
 takes under a minute once the crates are built.
 
 **The whole story on a local chain, from a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
@@ -88,7 +89,7 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/release
 ## What the agents can't do
 
 The shop's agent has a function-call key limited to five methods
-([admin.rs:32](contracts/pursestrings/src/admin.rs#L32)). Each rule below is enforced in the
+([admin.rs:13](contracts/pursestrings/src/admin.rs#L13)). Each rule below is enforced in the
 contract and tested.
 
 | However it's talked into it, the agent can't… | Because | Test |
@@ -290,9 +291,13 @@ How to check each claim is in [AGENTS.md](AGENTS.md).
 
 - **AI-assisted code:** written with Claude Code (Anthropic).
 - **Libraries:** near-sdk 5.29.1 and omni-transaction 0.5 (EVM transactions) in the contract;
-  near-sandbox, near-api, cargo-near-build and proptest for its tests; near-api-js 7.4,
-  @hot-labs/near-connect and the MCP TypeScript SDK; Next.js 16, Tailwind 4, GSAP and Lenis for
-  the site.
+  near-contract-standards and k256 in the test token and mock MPC signer; near-sandbox, near-api,
+  cargo-near-build, proptest, sha3, ed25519-dalek, tokio and testresult for the tests, following
+  the `cargo near new` template's sandbox setup; borsh and serde_json in the local devnet.
+  near-api-js 7.4, @noble/curves, @noble/hashes, the MCP TypeScript SDK and zod in the SDK, MCP
+  server, agents and API; Next.js 16, React 19, Tailwind 4, GSAP, Lenis, lucide-react and
+  @hot-labs/near-connect 0.12 for the site; Biome, TypeScript and Vitest for tooling. Fonts:
+  Archivo, Instrument Serif and JetBrains Mono (SIL Open Font License, via Google Fonts).
 - **Third-party contracts in the tests:** the mainnet `intents.near` v0.4.5 and Sputnik DAO v3.2
   code, both MIT ([tests/fixtures](contracts/pursestrings/tests/fixtures)).
 - **Baseline:** none. Every commit in this repository was made inside the hackathon window.

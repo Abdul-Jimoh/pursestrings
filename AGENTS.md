@@ -4,7 +4,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 
 ## The short path
 
-1. `make judge` (needs `cargo`; Node 22+ and pnpm 10 for part 2). Expect 18 lines starting `ok`,
+1. `make verify` (needs `cargo`; Node 22+ and pnpm 10 for part 2). Expect 18 lines starting `ok`,
    `test result: ok. 76 passed` for the contract, every TypeScript suite passing, then the
    recording of `make demo` ending `demo OK: 37/37 checks passed`.
 2. `make demo` (also needs cargo-near 0.22). The same story live on a local chain, about 2 minutes
@@ -33,7 +33,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 ## Commands
 
 ```sh
-make judge      # no chain or cargo-near: each claim beside its passing test, then a recording of make demo
+make verify      # no chain or cargo-near: each claim beside its passing test, then a recording of make demo
 make test       # contract unit tests, sandbox tests, TypeScript typecheck and tests
 make demo       # local chain + the scripted demo agent; ends with "demo OK: 37/37 checks passed"
 make redteam    # six attacks; output must match scripts/redteam/expected.txt
