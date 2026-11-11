@@ -80,7 +80,7 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/release
 
 | Track | What it asks for | Where it is here |
 |---|---|---|
-| Autonomous Business | AI-native business, treasury, sales, revenue sharing; humans set the constraints | An agent sells checks, haggles, delivers and refunds; the owner's floor, split and refund window are contract rules; the shop pays its own model costs ([`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB)) |
+| Autonomous Business | AI-native business, treasury, sales, revenue sharing; humans set the constraints | An agent sells checks, haggles, delivers and refunds; the owner's floor, split and refund window are contract rules; the shop pays its own model costs, in NEAR ([`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB)) or cross-chain in USDC on Base through Chain Signatures ([`0x3c80658a…`](https://sepolia.basescan.org/tx/0x3c80658a8b0fd2d98728dc3f967089bc47d64e5e3e0556484eb8de401e109eb6)) |
 | Social Money | Shared budgets, programmable rewards, reputation-based access on Sputnik DAO | A Sputnik DAO owns the bounty purse; payouts are approved by earned points, a council or a DAO vote ([Earned trust](#earned-trust-and-the-dao-above-it)) |
 | Agent Economy | Agents that earn, spend and pay for compute | The shop agent earns from sales and pays its model bill through the same policy; the procurement agent pays on NEAR, Base and Intents |
 | AI Security & Defense | Spending limits, policy engines, sandboxed wallets, scam detection | Function-call keys that can only ask, contract-built payments, timelocked loosening, a public jailbreak Range and a scam list ([THREAT_MODEL.md](THREAT_MODEL.md)) |
@@ -222,6 +222,7 @@ published. The seven security invariants, where each is enforced and the test fo
 | A newcomer's payout waits for one council member | Request [`BAyHL9R7…`](https://testnet.nearblocks.io/txns/BAyHL9R7jLT3YaYoNJWTRUYigqFK1qrc6eMJRX5VwDvM) `NeedsCouncil`, approval [`FCrQUmgn…`](https://testnet.nearblocks.io/txns/FCrQUmgn1p7GmWdvdFmAhoq1tswjY9j1F9Xb2Tx6KKjX) by a council member who didn't post the bounty |
 | One point later, the next small payout needs nobody | [`HG4QC5hd…`](https://testnet.nearblocks.io/txns/HG4QC5hd61bhE4iaV1quNdvPNawBWzpeaFWtXhbZGdyB): `Approved` (the reporters in these rows are our own scripted test accounts) |
 | The shop pays its own model costs out of its earnings | [`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB): 0.0011 NEAR for 17 model calls, a `request_spend` under the shop's policy |
+| …and pays them cross-chain, in USDC on Base, built by the contract and signed by the MPC network | Request [`CDo3zQue…`](https://testnet.nearblocks.io/txns/CDo3zQueS6rk1ufLpJn8dvbqfiiisZrJ7g1PuabrF6US) (0.001246 USDC for 5 calls), Base Sepolia [`0x3c80658a…`](https://sepolia.basescan.org/tx/0x3c80658a8b0fd2d98728dc3f967089bc47d64e5e3e0556484eb8de401e109eb6) broadcast by the API's relayer, proven final by a third party [`5p8eXjJX…`](https://testnet.nearblocks.io/txns/5p8eXjJX42Yn8jKKUfZd5ouFxHxzeKeAmCJwZBVnAGnV) |
 | A Base payment built by the contract, signed by the MPC network, proven final by a third party | Request [`6tZx8ojH…`](https://testnet.nearblocks.io/txns/6tZx8ojHjogyKUbBgH2j2ZYbQmvZL85DvRna29JR9Y8J), Base Sepolia [`0x0b9ca7be…7bbb`](https://sepolia.basescan.org/tx/0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb), proof [`6to9rRaQ…`](https://testnet.nearblocks.io/txns/6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv) |
 | Code changes only to a published hash, after the timelock | Shop: publish [`F1Kb3W9V…`](https://testnet.nearblocks.io/txns/F1Kb3W9Vv1QSe8NdEZZ7HgjioVuo3q9hNnCuVBhmT32R), propose [`4HxtK6j2…`](https://testnet.nearblocks.io/txns/4HxtK6j2y6nfX43syVMKRrvStjKspNcU9Pb2jCzTPK8a), apply an hour later [`2WQLJ5nt…`](https://testnet.nearblocks.io/txns/2WQLJ5ntxuhvyULmJngVehA6Q7nk2vaYiirr4thEDQ5m) |
 | The accounts can't be changed by a key | [shop](https://testnet.nearblocks.io/address/shop.factory.ps-spike-1028.testnet) and [board](https://testnet.nearblocks.io/address/board.factory.ps-spike-1028.testnet): only agent function-call keys, no full-access key |
@@ -244,8 +245,8 @@ signs on other chains, a cross-chain intent identity and a DAO owner. On NEAR th
 ## Sustainability
 
 The shop is the business model, running: each sale pays the owner 70%, the community 20% and
-keeps 10% for refunds. The agent pays its own model costs back out of those earnings, as a
-`request_spend` under the same policy ([costs.ts](apps/shop/src/costs.ts),
+keeps 10% for refunds. The agent pays its own model costs back out of those earnings, in NEAR or
+in USDC on another chain, as a `request_spend` under the same policy ([costs.ts](apps/shop/src/costs.ts),
 [tests](apps/shop/src/costs.test.ts)). The community share funds the bounties that
 make the product better. The same engine can run other agent businesses that have to be trusted
 with money. Nothing in the payment path needs our server: the relayer is replaceable, and anyone
