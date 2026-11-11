@@ -13,6 +13,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "@pursestrings/mcp": "workspace:*",
+    "@pursestrings/relayer": "workspace:*",
     "@pursestrings/sdk": "workspace:*",
     "@pursestrings/shop": "workspace:*",
     "near-api-js": "7.4.0"

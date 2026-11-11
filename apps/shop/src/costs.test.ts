@@ -31,6 +31,31 @@ describe("the shop's own costs", () => {
     expect(seen).toEqual([10]);
   });
 
+  it("can pay in USDC on an EVM chain, one unit per micro-dollar", async () => {
+    const ok = agent({ Approved: { req_id: 4 } });
+    const usdc = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
+    const to = "0x9d7ac751235b819991b3050d3f19e58a8e66ae03";
+    const c = new Costs({
+      agent: ok.a,
+      payee: "unused.testnet",
+      nearPerUsd: 0.25,
+      minYocto: 0n,
+      maxYocto: 0n,
+      evm: { chainId: 84532, token: usdc, to, min: 10_000n, max: 1_000_000n },
+    });
+    c.add(0.004);
+    expect(await c.settle(), "under 0.01 USDC waits").toBeUndefined();
+    c.add(0.0123456);
+    const paid = await c.settle();
+    expect(paid?.amount).toBe(16_346n);
+    expect(ok.asks[0]).toMatchObject({
+      asset: { Evm: { chain_id: 84532, token: usdc } },
+      amount: "16346",
+      dest: { Evm: { chain_id: 84532, to } },
+    });
+    expect(c.owed()).toBe(0n);
+  });
+
   it("pays the debt through request_spend once it's worth it, and keeps it if refused", async () => {
     const ok = agent({ Approved: { req_id: 3 } });
     const c = new Costs({

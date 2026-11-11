@@ -16,6 +16,8 @@ primary_region = "iad"
   SHOP_ACCOUNT = "shop.factory.ps-spike-1028.testnet"
   BOARD_ACCOUNT = "board.factory.ps-spike-1028.testnet"
   SHOP_COSTS_TO = "ps-spike-1028.testnet"
+  SHOP_COSTS_EVM = "84532:0x036cbd53842c5426634e7929541ec2318f3dcf7e:0x9d7ac751235b819991b3050d3f19e58a8e66ae03"
+  EVM_RPC_84532 = "https://sepolia.base.org"
 
 # The attack log is an append-only file, so it lives on a volume.
 [[mounts]]

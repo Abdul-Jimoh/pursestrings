@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, parseDecimals } from "@pursestrings/mcp";
+import { relayOnce } from "@pursestrings/relayer";
 import { Pursestrings } from "@pursestrings/sdk";
 import {
   Attempts,
@@ -120,6 +121,8 @@ if (shopAccount) {
     JSON.parse(readFileSync(need("SHOP_AGENT_KEY_FILE"), "utf8")).private_key;
   const shopAgent = shop.agent(shopKey);
   const costsTo = process.env.SHOP_COSTS_TO;
+  // "chain id:token:recipient": pay the model costs in USDC on that chain through Chain Signatures.
+  const [evmChain, evmToken, evmTo] = (process.env.SHOP_COSTS_EVM ?? "").split(":");
   const costs = costsTo
     ? new Costs({
         agent: shopAgent,
@@ -128,6 +131,17 @@ if (shopAccount) {
         minYocto: 10n ** 21n,
         // Under the shop's co-sign threshold, so a payment never waits on the owner.
         maxYocto: 10n ** 23n,
+        ...(evmChain && evmToken && evmTo
+          ? {
+              evm: {
+                chainId: Number(evmChain),
+                token: evmToken,
+                to: evmTo,
+                min: 1_000n,
+                max: 1_000_000n,
+              },
+            }
+          : {}),
       })
     : undefined;
   const { route, tick } = shopRoutes({
@@ -149,6 +163,23 @@ if (shopAccount) {
   });
   routes.push(route);
   setInterval(() => tick().catch((e) => console.error("shop:", e)), 5_000);
+
+  // Broadcasts what the shop's contract has signed for other chains. It holds no keys; anyone
+  // can do this, and anyone can later prove the payment settled.
+  const evmRpc: Record<number, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    const m = /^EVM_RPC_(\d+)$/.exec(k);
+    if (m?.[1] && v) evmRpc[Number(m[1])] = v;
+  }
+  if (Object.keys(evmRpc).length) {
+    const relay = () =>
+      relayOnce({ nearRpc: rpc, account: shopAccount, evmRpc })
+        .then((reports) => {
+          for (const r of reports) console.log(`relay: ${JSON.stringify(r)}`);
+        })
+        .catch((e) => console.error("relay:", e));
+    setInterval(relay, 30_000);
+  }
 }
 
 const provider = new JsonRpcProvider({ url: rpc });

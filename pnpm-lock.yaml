@@ -44,6 +44,9 @@ importers:
       '@pursestrings/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@pursestrings/relayer':
+        specifier: workspace:*
+        version: link:../../services/relayer
       '@pursestrings/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

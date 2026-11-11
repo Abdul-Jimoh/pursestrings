@@ -5,6 +5,9 @@
   "license": "Apache-2.0",
   "description": "Untrusted broadcaster for transactions a Pursestrings account has signed",
   "type": "module",
+  "exports": {
+    ".": "./src/relayer.ts"
+  },
   "scripts": {
     "start": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc --noEmit",

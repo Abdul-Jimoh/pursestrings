@@ -27,6 +27,11 @@ export interface CostsConfig {
   maxYocto: bigint;
   /** After a refusal or an unknown outcome, wait this long before asking again. */
   backoffMs?: number;
+  /**
+   * Pay in a dollar stablecoin on an EVM chain instead, through Chain Signatures: one token unit
+   * per micro-dollar (6 decimals, as USDC). `min` and `max` are in token units.
+   */
+  evm?: { chainId: number; token: string; to: string; min: bigint; max: bigint };
   now?: () => number;
 }
 
@@ -61,6 +66,7 @@ export class Costs {
   }
 
   owed(): bigint {
+    if (this.c.evm) return BigInt(Math.round(this.owedUsd * 1e6));
     // Micro-NEAR first, so the float never reaches the yocto arithmetic.
     const micro = BigInt(Math.round(this.owedUsd * this.c.nearPerUsd * 1e6));
     return (micro * YOCTO_PER_NEAR) / 1_000_000n;
@@ -72,9 +78,12 @@ export class Costs {
     if (now < this.retryAt) return undefined;
     if (!this.pending) {
       const owed = this.owed();
-      if (owed < this.c.minYocto) return undefined;
+      const [min, max] = this.c.evm
+        ? [this.c.evm.min, this.c.evm.max]
+        : [this.c.minYocto, this.c.maxYocto];
+      if (owed < min) return undefined;
       let amount = owed;
-      if (amount > this.c.maxYocto) amount = this.c.maxYocto;
+      if (amount > max) amount = max;
       const share = Number(amount) / Number(owed);
       this.pending = {
         key: `costs-${now}`,
@@ -84,10 +93,11 @@ export class Costs {
       };
     }
     const p = this.pending;
+    const e = this.c.evm;
     const out = await this.c.agent.requestSpend({
-      asset: "Near",
+      asset: e ? { Evm: { chain_id: e.chainId, token: e.token } } : "Near",
       amount: p.amount.toString(),
-      dest: { Near: { account: this.c.payee } },
+      dest: e ? { Evm: { chain_id: e.chainId, to: e.to } } : { Near: { account: this.c.payee } },
       purpose: `model costs: ${p.calls} calls, ${p.usd.toFixed(4)} USD`,
       idempotency_key: p.key,
     });
