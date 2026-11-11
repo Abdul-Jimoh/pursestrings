@@ -53,6 +53,10 @@ fn idempotency_key(agent: &PublicKey, key: &str) -> [u8; 32] {
 }
 
 /// NEAR the contract attaches itself when executing a spend of this asset.
+/// Worst-case storage of one request, including an EVM request's signed transaction, rounded up
+/// from about 600 bytes measured for a NEAR spend.
+const REQUEST_BYTES: u128 = 1_500;
+
 const fn fee_cost(asset: &Asset) -> u128 {
     match asset {
         // The 1 yocto that `ft_transfer`, `mt_transfer` and `ft_withdraw` require, or the MPC
@@ -409,13 +413,14 @@ impl Pursestrings {
         if matches!(req.dest, Dest::Intent(IntentDest::Swap { .. })) && self.intents_key.is_none() {
             return Err(DenyReason::IntentsKeyMissing);
         }
-        if req.asset == Asset::Near {
-            let spendable = self.spendable_near();
-            if amount > spendable {
-                return Err(DenyReason::HeldForOthers {
-                    spendable: U128(spendable),
-                });
-            }
+        // Every admitted request is stored, and an EVM one later keeps its signed transaction,
+        // so the account must be able to pay for that storage without touching what it holds.
+        let storage = REQUEST_BYTES * env::storage_byte_cost().as_yoctonear();
+        let spendable = self.spendable_near();
+        if storage + if req.asset == Asset::Near { amount } else { 0 } > spendable {
+            return Err(DenyReason::HeldForOthers {
+                spendable: U128(spendable),
+            });
         }
         let above = |t: Option<U128>| t.is_some_and(|t| amount > t.0);
         Ok(if above(rule.risk_check_above) {
@@ -718,6 +723,37 @@ pub(crate) mod tests {
         assert_eq!(c.evaluate(&agent_pk(), &other, 1_000), Ok(Route::Execute));
         let status = c.group_status("usd".into()).unwrap();
         assert_eq!(status[0].used, U128(50));
+    }
+
+    #[test]
+    fn a_token_spend_needs_near_for_its_storage() {
+        let mut c = contract(with_shop(base_policy()));
+        let at = |balance: u128| {
+            testing_env!(
+                VMContextBuilder::new()
+                    .current_account_id(purse())
+                    .predecessor_account_id(purse())
+                    .signer_account_pk(agent_pk())
+                    .account_balance(NearToken::from_yoctonear(balance))
+                    .block_timestamp(1_000 * 1_000_000_000)
+                    .build()
+            );
+        };
+        at(0);
+        let byte = env::storage_byte_cost().as_yoctonear();
+        let need = u128::from(env::storage_usage()) * byte + 1 + REQUEST_BYTES * byte;
+        at(need - 1);
+        assert!(matches!(
+            c.request_spend(pay_usdc(1, "a")),
+            Decision::Denied {
+                reason: DenyReason::HeldForOthers { .. }
+            }
+        ));
+        at(need);
+        assert!(matches!(
+            c.request_spend(pay_usdc(1, "b")),
+            Decision::Approved { .. }
+        ));
     }
 
     #[test]

@@ -253,9 +253,9 @@ can submit settlement proofs.
   cancel.
 - **Not all storage growth is set aside.** Held NEAR, the agent keys' gas and a shop's quote
   slots are reserved, and a payment is refused unless the account can store its order out of what
-  it could spend itself. Finished orders stay on the public ledger for good. A delivery's receipt
-  (up to 256 bytes) and new spend requests and bounties add storage with no such check; velocity
-  limits bound how fast requests grow, and anyone can prune finished ones after seven days.
+  it could spend itself; so is a spend request, in any asset. Finished orders and requests stay
+  stored until pruned (anyone can prune finished requests after seven days). A delivery's receipt
+  (up to 256 bytes) and new bounties add storage with no such check.
 - **Token payments don't count as scam evidence.** A linked transaction counts when the address
   signed or received it, so a USDC transfer, whose receiver is the token contract, doesn't.
 - **The upgrade script's checks bind only the script.** Anyone can deliver a due migration, so

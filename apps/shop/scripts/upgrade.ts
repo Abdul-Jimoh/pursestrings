@@ -16,6 +16,7 @@ import {
   daoDo,
   FACTORY,
   ROOT,
+  rpc,
   signer,
   TGAS,
   view,
@@ -73,6 +74,25 @@ for (const { account } of split) {
 if ((open.length || unpaid.length || quoted.length) && process.env.ALLOW_OPEN_ORDERS !== "1")
   throw new Error(
     `deliver or refund paid orders [${open.join(", ")}], retry unpaid shares [${unpaid.join(", ")}] and let quotes [${quoted.join(", ")}] expire first`,
+  );
+// The new code sets aside every agent key's gas allowance and, for a shop, its free quote slots'
+// storage; below that, payments and refunds after delivery are refused until it's topped up.
+const acct = await rpc<{ amount: string; storage_usage: number }>({
+  request_type: "view_account",
+  account_id: ACCOUNT,
+});
+const BYTE = 10n ** 19n;
+const allowances = (await view<[string, { allowance: string }][]>(ACCOUNT, "agents")).reduce(
+  (sum, [, a]) => sum + BigInt(a.allowance),
+  0n,
+);
+const policy = await view<{ floors: { asset: unknown }[] }>(ACCOUNT, "policy");
+const sells = policy.floors.some((f) => f.asset === "Near");
+const reserves = allowances + (sells ? 64n * 1_000n * BYTE : 0n) + 15n * 10n ** 21n;
+const free = acct ? BigInt(acct.amount) - BigInt(acct.storage_usage) * BYTE : 0n;
+if (free < reserves && process.env.ALLOW_LOW_BALANCE !== "1")
+  throw new Error(
+    `${ACCOUNT} has ${free} yocto free; the new code sets aside ${reserves} (agent gas, quote slots, one order and one request). Top it up or revoke unused agent keys first`,
   );
 if (!migration) {
   const args = { ops: [{ Migrate: { code_hash: hash } }] };
