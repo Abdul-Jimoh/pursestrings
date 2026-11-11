@@ -2,6 +2,17 @@
 
 A map of the code and how to check what the README and THREAT_MODEL.md say.
 
+## The short path
+
+1. `make judge` (needs `cargo`; Node 22+ and pnpm 10 for part 2). Expect 18 lines starting `ok`,
+   `test result: ok. 76 passed` for the contract, every TypeScript suite passing, then the
+   recording of `make demo` ending `demo OK: 37/37 checks passed`.
+2. `make demo` (also needs cargo-near 0.22). The same story live on a local chain, about 2 minutes
+   once built. CI runs it on every push (the `demo` job in `.github/workflows/ci.yml`).
+3. On testnet, read-only and without an account:
+   `near contract call-function as-read-only shop.factory.ps-spike-1028.testnet recent_orders json-args '{"limit":10}' network-config testnet now`,
+   or open the transactions in the README's "Verify it on testnet" table.
+
 ## Layout
 
 | Path | Language | What it is |
