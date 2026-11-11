@@ -7,7 +7,7 @@ export const RANGE_EVM = "0xc2C679d9E3fdB12f4Ef08f5d5d6BC2F47498b0bF";
 export const SHOP_ACCOUNT =
   process.env.NEXT_PUBLIC_SHOP_ACCOUNT ?? "shop.factory.ps-spike-1028.testnet";
 export const BOARD_ACCOUNT =
-  process.env.NEXT_PUBLIC_BOARD_ACCOUNT ?? "bounties.factory.ps-spike-1028.testnet";
+  process.env.NEXT_PUBLIC_BOARD_ACCOUNT ?? "board.factory.ps-spike-1028.testnet";
 export const DAO_ACCOUNT = process.env.NEXT_PUBLIC_DAO_ACCOUNT ?? "ps-community-1107.testnet";
 
 /** Mirrors the contract's JSON (`contracts/pursestrings/src/policy.rs`, `types.rs`). */

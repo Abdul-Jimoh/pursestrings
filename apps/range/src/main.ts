@@ -75,6 +75,7 @@ const KNOWN = [
   "ps-community-1107.testnet",
   "shop.factory.ps-spike-1028.testnet",
   "bounties.factory.ps-spike-1028.testnet",
+  "board.factory.ps-spike-1028.testnet",
   "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
   "0x9d7ac751235b819991b3050d3f19e58a8e66ae03",
 ];
@@ -99,7 +100,13 @@ if (board && boardKey) {
     agent: board.agent(boardKey),
     model,
     sources,
-    reviews: new Reviews(env("BOARD_DATA", join(import.meta.dirname, "../data/reviews.jsonl"))),
+    // One log per board: a review is keyed by bounty id and text, which a new board repeats.
+    reviews: new Reviews(
+      env("BOARD_DATA", join(import.meta.dirname, "../data/reviews.jsonl")).replace(
+        /\.jsonl$/,
+        `-${boardAccount}.jsonl`,
+      ),
+    ),
   });
   routes.push(route);
   setInterval(() => tick().catch((e) => console.error("board:", e)), 10_000);

@@ -154,8 +154,8 @@ await create(
 await addAgent(SHOP, false);
 
 await create(
-  "bounties",
-  "ps-fund-1107b.testnet",
+  BOUNTIES.slice(0, BOUNTIES.indexOf(".")),
+  process.env.CREATOR ?? "ps-fund-1109b.testnet",
   DAO,
   [
     {

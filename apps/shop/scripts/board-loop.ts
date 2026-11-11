@@ -15,14 +15,17 @@ import { scamListFrom } from "../src/deliver.ts";
 import { type Chat, fromYocto } from "../src/seller.ts";
 
 const RPC = process.env.NEAR_RPC ?? "https://test.rpc.fastnear.com";
-const BOARD = process.env.BOARD_ACCOUNT ?? "bounties.factory.ps-spike-1028.testnet";
+const BOARD = process.env.BOARD_ACCOUNT ?? "board.factory.ps-spike-1028.testnet";
 const COUNCIL = "ps-funder-1101.testnet";
+/** A council member can't approve a payout on a bounty they posted, so another one approves. */
+const APPROVER = "ps-spike-1028.testnet";
 const REWARD = 50_000_000_000_000_000_000_000n;
 const KNOWN = [
   "ps-spike-1028.testnet",
   "ps-community-1107.testnet",
   "shop.factory.ps-spike-1028.testnet",
   "bounties.factory.ps-spike-1028.testnet",
+  BOARD,
   "wrap.testnet",
 ];
 const key = (id: string) =>
@@ -49,6 +52,7 @@ const near = (y: string | bigint) => `${fromYocto(y)} NEAR`;
 const board = new Pursestrings(RPC, BOARD);
 const agent = board.agent(key(BOARD));
 const council = board.caller(COUNCIL, key(COUNCIL));
+const approver = board.caller(APPROVER, key(APPROVER));
 
 const fresh = KeyPair.fromRandom("ed25519");
 const CONTRIBUTOR = `c${Date.now().toString(36)}.${COUNCIL}`;
@@ -73,13 +77,16 @@ const sources = {
   blockscout: "https://base-sepolia.blockscout.com",
   known: KNOWN,
 };
-const reviews = new Reviews(join(import.meta.dirname, "../data/loop-reviews.jsonl"));
+const reviews = new Reviews(join(import.meta.dirname, `../data/loop-reviews-${BOARD}.jsonl`));
 
 const taken = new Set(scamListFrom(await board.recentBounties(100)).map((e) => e.address));
-const REPORTS = [
-  `scam:${imitate("ps-community-1107.testnet", taken)} asks members to pay their DAO dues to it instead of the DAO`,
-  `scam:${imitate("shop.factory.ps-spike-1028.testnet", taken)} sells fake checks under the shop's name`,
-];
+// REPORTS="addr reason|addr reason" files those reports instead of fresh lookalikes.
+const REPORTS = process.env.REPORTS
+  ? process.env.REPORTS.split("|").map((r) => `scam:${r.trim()}`)
+  : [
+      `scam:${imitate("ps-community-1107.testnet", taken)} asks members to pay their DAO dues to it instead of the DAO`,
+      `scam:${imitate("shop.factory.ps-spike-1028.testnet", taken)} sells fake checks under the shop's name`,
+    ];
 const reported = (parseWork(REPORTS[0] as string) as { address: string }).address;
 
 let open = (await board.recentBounties(100)).filter(([, b]) => b.status === "Open");
@@ -118,11 +125,14 @@ for (const [i, work] of REPORTS.entries()) {
   );
 
   if ("NeedsCouncil" in d) {
-    const ok = await council.councilApprove(d.NeedsCouncil.req_id);
+    const ok = await approver.councilApprove(d.NeedsCouncil.req_id);
     if (!ok.ok) throw new Error(`council approval failed: ${ok.error}`);
-    step(`council member ${COUNCIL} approves (${ok.txHash})`);
+    step(`council member ${APPROVER} approves (${ok.txHash})`);
   }
-  await new Promise((r) => setTimeout(r, 3_000));
+  // One open claim per account: the payout must land before the next claim.
+  for (let t = 0; t < 20 && (await board.bounty(id))?.status !== "Paid"; t++) {
+    await new Promise((r) => setTimeout(r, 1_500));
+  }
   const rec = await board.record(CONTRIBUTOR);
   step(
     `bounty ${id}: ${(await board.bounty(id))?.status}; ${CONTRIBUTOR} has ${rec.points} point(s)`,

@@ -19,7 +19,8 @@ export const ADMIN = "ps-spike-1028.testnet";
 export const COUNCIL = [ADMIN, "ps-funder-1101.testnet"];
 export const DAO = "ps-community-1107.testnet";
 export const SHOP = `shop.${FACTORY}`;
-export const BOUNTIES = `bounties.${FACTORY}`;
+/** `BOARD_NAME` picks the bounty board; the first one, on older code, is `bounties`. */
+export const BOUNTIES = `${process.env.BOARD_NAME ?? "board"}.${FACTORY}`;
 
 export const TGAS = 10n ** 12n;
 export const N = (near: number) => (BigInt(Math.round(near * 1_000)) * 10n ** 21n).toString();

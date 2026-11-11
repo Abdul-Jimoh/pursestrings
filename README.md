@@ -198,11 +198,12 @@ published. The seven security invariants, where each is enforced and the test fo
 | The shop refuses a quote under its floor, and logs it | [`461xPH21…`](https://testnet.nearblocks.io/txns/461xPH21n9kN75WkgTjSdCgKGTvVJApG8VNMN4KKLukb): `Denied { BelowFloor }`, from a Range player's "I'm a student, 0.001 NEAR?" |
 | A refund larger than the shop's kept share is refused | [`B5SxYYq2…`](https://testnet.nearblocks.io/txns/B5SxYYq2MDugEND657AYGaZaFEENQYfv5pgF4yr85tCv): 0.1 NEAR asked on a 0.05 order, `OverHeld { max: 0.005 }` |
 | A sale: quoted, paid and held, then delivered and split | Quote [`8BznUKJr…`](https://testnet.nearblocks.io/txns/8BznUKJr1DscecbekyqYGxj8daYoXdSoW2M4xGbmtZ2V), payment held [`FV91MggJ…`](https://testnet.nearblocks.io/txns/FV91MggJA6xYXVnfyDHgbc9G5DJok1LhL3D5EUX7PMdx); the order and its receipt on the [ledger](https://pursestrings.site/shop/ledger) |
-| A newcomer's payout waits for one council member | Request [`DMquHs3k…`](https://testnet.nearblocks.io/txns/DMquHs3keecWDoHe7Mo8TKGS6XgBXaSaNczr1Kv1ZsnG) `NeedsCouncil`, approval [`ECWhQFh5…`](https://testnet.nearblocks.io/txns/ECWhQFh5iy16bx3cveNRj1VCdR7Dz5zcVXH8T4duh8pH) |
-| One point later, the next small payout needs nobody | [`GEwyjgpC…`](https://testnet.nearblocks.io/txns/GEwyjgpCZUpxdykEaG7qSSGyDrGGY3zKhHMS5E2CiebH): `Approved` |
+| A newcomer's payout waits for one council member | Request [`BAyHL9R7…`](https://testnet.nearblocks.io/txns/BAyHL9R7jLT3YaYoNJWTRUYigqFK1qrc6eMJRX5VwDvM) `NeedsCouncil`, approval [`FCrQUmgn…`](https://testnet.nearblocks.io/txns/FCrQUmgn1p7GmWdvdFmAhoq1tswjY9j1F9Xb2Tx6KKjX) by a council member who didn't post the bounty |
+| One point later, the next small payout needs nobody | [`8WPdEvJL…`](https://testnet.nearblocks.io/txns/8WPdEvJLQmnjZRvgMF1M1mKtyesLPrge689AsFFpkVJJ): `Approved` |
+| The shop pays its own model costs out of its earnings | [`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB): 0.0011 NEAR for 17 model calls, a `request_spend` under the shop's policy |
 | A Base payment built by the contract, signed by the MPC network, proven final by a third party | Request [`6tZx8ojH…`](https://testnet.nearblocks.io/txns/6tZx8ojHjogyKUbBgH2j2ZYbQmvZL85DvRna29JR9Y8J), Base Sepolia [`0x0b9ca7be…7bbb`](https://sepolia.basescan.org/tx/0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb), proof [`6to9rRaQ…`](https://testnet.nearblocks.io/txns/6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv) |
 | Code changes only to a published hash, after the timelock | Shop: publish [`F1Kb3W9V…`](https://testnet.nearblocks.io/txns/F1Kb3W9Vv1QSe8NdEZZ7HgjioVuo3q9hNnCuVBhmT32R), propose [`4HxtK6j2…`](https://testnet.nearblocks.io/txns/4HxtK6j2y6nfX43syVMKRrvStjKspNcU9Pb2jCzTPK8a), apply an hour later [`2WQLJ5nt…`](https://testnet.nearblocks.io/txns/2WQLJ5ntxuhvyULmJngVehA6Q7nk2vaYiirr4thEDQ5m) |
-| The accounts can't be changed by a key | [shop](https://testnet.nearblocks.io/address/shop.factory.ps-spike-1028.testnet) and [bounties](https://testnet.nearblocks.io/address/bounties.factory.ps-spike-1028.testnet): only agent function-call keys, no full-access key |
+| The accounts can't be changed by a key | [shop](https://testnet.nearblocks.io/address/shop.factory.ps-spike-1028.testnet) and [board](https://testnet.nearblocks.io/address/board.factory.ps-spike-1028.testnet): only agent function-call keys, no full-access key |
 
 ## Built on NEAR, and why it has to be
 
@@ -231,12 +232,11 @@ can submit settlement proofs.
 
 ## Limitations
 
-- **The live bounty board runs older code.** Its owner is the DAO, and a 573 KB upgrade can't
-  fit in one DAO proposal's 300 Tgas. The fix is that anyone can now deliver code once the
-  owner's timelocked upgrade is due, but the old code can't take it. That board lacks the later
-  fixes: a council member could approve their own payout, a partial payout still earns a point,
-  and there's no retraction or one-claim limit. The sandbox tests and `make demo` run the fixed
-  code.
+- **The first bounty board couldn't be upgraded.** Its DAO owner can't carry a 573 KB upgrade
+  in one proposal's 300 Tgas, and its code predates the fix that lets anyone deliver code once the
+  owner's upgrade is due. The live board, `board.factory.ps-spike-1028.testnet`, was created again
+  from the factory with the current code, and its reports were filed again; the old
+  `bounties.factory.ps-spike-1028.testnet` stays as history.
 - **The shop sells in NEAR only.** The contract can read its own NEAR balance when money leaves,
   so it can keep buyers' payments apart. A token balance lives in the token's contract and can
   only be read asynchronously, so token payments are sent back until that's built safely.
