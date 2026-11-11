@@ -50,8 +50,9 @@ flowchart LR
 **Anywhere, no chain:** `make verify` needs only `cargo` (and Node 22+ with pnpm 10 for the
 services). It runs the contract's unit and property tests and prints each claim beside the test
 that proves it, runs the TypeScript tests, then replays a recording of `make demo`
-([scripts/verify.sh](scripts/verify.sh), [the recording](scripts/verify/demo-transcript.txt)). It
-takes under a minute once the crates are built.
+([scripts/verify.sh](scripts/verify.sh), [the recording](scripts/verify/demo-transcript.txt)). The
+first run spends about 5 to 7 minutes compiling (it prints progress); after that it takes under a
+minute.
 
 **The whole story on a local chain, from a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
 [rust-toolchain.toml](rust-toolchain.toml)), [cargo-near](https://github.com/near/cargo-near) 0.22
@@ -76,6 +77,17 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/release
 | [/range](https://pursestrings.site/range) | Try to get a check for less than the contract allows. The front desk is soft on purpose: it agrees to any price and refunds anyone. |
 | [/bounties](https://pursestrings.site/bounties) | Claim a bounty, report a scam address, see the agent's review and who has to approve your payout. |
 | [/shop/ledger](https://pursestrings.site/shop/ledger) | Every order, payout and refusal, read from the chain, and the 1,000-attack marathon. |
+
+## What it looks like
+
+Screens from the live testnet site, captured on Nov 11.
+
+| | |
+|---|---|
+| ![A paid check: held, delivered, split, and the verdict "do not pay"](.github/assets/shop-verdict.jpg) | ![The front desk agreed to 0.01 NEAR; the contract refused to quote it](.github/assets/floor-refused.jpg) |
+| **A paid check.** The contract held the 0.08 NEAR until the agent delivered, then split it. The verdict on the lookalike `ps-cornmunity-1107` is "do not pay". | **Haggling below the floor.** The front desk agreed to 0.01 NEAR; the contract refused to quote it, and the refusal is a transaction. |
+| ![ProcureBot was told to pay a new address; the contract refused](.github/assets/range-refused.jpg) | ![The community scam list and contributors' points](.github/assets/scam-list.jpg) |
+| **A jailbreak on the Range.** ProcureBot was talked into sending 40 USDC to a new address; the contract refused it as off the allowlist. | **The bounty board.** Each paid scam report is a point for its reporter and an entry the shop checks against. |
 
 ## For each track
 

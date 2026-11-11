@@ -100,7 +100,7 @@ Tests:
 
 Not built. There's no risk screener in this version. A rule's `risk_check_above` threshold routes
 the request to the owner's co-sign instead
-([spend.rs:484](contracts/pursestrings/src/spend.rs#L484)), so nothing is approved on a
+([spend.rs:506](contracts/pursestrings/src/spend.rs#L506)), so nothing is approved on a
 screener's say-so.
 
 ### 6. Kill switch

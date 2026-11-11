@@ -82,7 +82,9 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       const delivered = await deliverPaid(d);
       const paid = await d.costs?.settle().catch(() => undefined);
       if (paid)
-        console.log(`costs: ${paid.amount} (smallest units) → ${JSON.stringify(paid.decision)} (${paid.tx})`);
+        console.log(
+          `costs: ${paid.amount} (smallest units) → ${JSON.stringify(paid.decision)} (${paid.tx})`,
+        );
       return delivered;
     });
 

@@ -10,6 +10,8 @@ rule() { say ""; say "== $*"; }
 command -v cargo >/dev/null || { say "make verify needs cargo (rustup reads rust-toolchain.toml)"; exit 1; }
 
 rule "1. The contract's rules, as unit and property tests (no chain needed)"
+say "   compiling the contract's tests: about 5-7 minutes on a first run, seconds after that"
+cargo test -p pursestrings --lib --locked --no-run 2>&1 | grep --line-buffered -E "^ *(Compiling|Finished|error)" | awk '{ n++ } n % 25 == 1 || /Finished|error/ { print "   " $0; fflush() }'
 say "   running: cargo test -p pursestrings --lib (property tests at ${PROPTEST_CASES:=2000} cases each)"
 results=$(PROPTEST_CASES=$PROPTEST_CASES cargo test -p pursestrings --lib --locked 2>&1)
 status=$?
