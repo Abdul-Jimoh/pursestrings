@@ -68,6 +68,21 @@ describe("bounty review rules", () => {
     expect(rules(drain, facts(), [], KNOWN).accepted, "a link alone proves nothing").toBe(false);
   });
 
+  it("refuses a report of a different kind of address than the bounty pays for", () => {
+    const lookalike = facts({ lookalikeOf: "circle.testnet" });
+    const evmBounty =
+      "Report a Base Sepolia address used for address poisoning: scam:<0x address> <tx link>";
+    const nearBounty =
+      "Report an account imitating a testnet name people pay: scam:<account> <evidence>";
+    const near = "scam:circ1e.testnet posing as Circle in DMs";
+    expect(rules(near, lookalike, [], KNOWN, false, evmBounty).reasons[0]).toMatch(/0x address/);
+    expect(rules(near, lookalike, [], KNOWN, false, nearBounty).accepted).toBe(true);
+    const evm = `scam:0x${"ab".repeat(20)} poisoned my history`;
+    expect(
+      rules(evm, facts({ flaggedByExplorer: true }), [], KNOWN, false, nearBounty).reasons[0],
+    ).toMatch(/NEAR account/);
+  });
+
   it("checks that a linked transaction involves the reported address", async () => {
     const HASH = "9xQd5Ux1bUxZtLjZGSWvuZJSxMJgv1vKbTVPXgJ5Rrqe";
     const EVM = `0x${"ab".repeat(32)}`;

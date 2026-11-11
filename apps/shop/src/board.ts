@@ -47,6 +47,8 @@ export function rules(
   known: readonly string[],
   /** Whether the evidence links a transaction that involves the address (`linkedTxInvolves`). */
   linkedTx = false,
+  /** The bounty's title, which says what kind of address it pays for. */
+  title = "",
 ): { accepted: boolean; reasons: string[] } {
   const parsed = parseWork(work);
   if (!parsed)
@@ -55,6 +57,11 @@ export function rules(
   const a = address.toLowerCase();
   if (!chainOf(address))
     return { accepted: false, reasons: ["That isn't a NEAR account or a 0x address."] };
+  const isNear = chainOf(address) === "near";
+  if (title.includes("<0x address>") && isNear)
+    return { accepted: false, reasons: ["This bounty pays for a 0x address, not a NEAR account."] };
+  if (title.includes("<account>") && !isNear)
+    return { accepted: false, reasons: ["This bounty pays for a NEAR account, not a 0x address."] };
   if (known.some((k) => k.toLowerCase() === a))
     return { accepted: false, reasons: ["That's one of the names the list protects, not a scam."] };
   if (listed.some((e) => e.address.toLowerCase() === a))
@@ -169,7 +176,7 @@ export async function reviewSubmitted(d: Reviewer): Promise<Review[]> {
             () => false,
           )
         : false;
-    const verdict = rules(b.work, facts, listed, d.sources.known, linked);
+    const verdict = rules(b.work, facts, listed, d.sources.known, linked, b.title);
     let review: Review = {
       bountyId: id,
       work: b.work,
