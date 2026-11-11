@@ -282,6 +282,17 @@ can submit settlement proofs.
 
 How to check each claim is in [AGENTS.md](AGENTS.md).
 
+## Built with
+
+- **AI-assisted code:** written with Claude Code (Anthropic).
+- **Libraries:** near-sdk 5.29.1 and omni-transaction 0.5 (EVM transactions) in the contract;
+  near-sandbox, near-api, cargo-near-build and proptest for its tests; near-api-js 7.4,
+  @hot-labs/near-connect and the MCP TypeScript SDK; Next.js 16, Tailwind 4, GSAP and Lenis for
+  the site.
+- **Third-party contracts in the tests:** the mainnet `intents.near` v0.4.5 and Sputnik DAO v3.2
+  code, both MIT ([tests/fixtures](contracts/pursestrings/tests/fixtures)).
+- **Baseline:** none. Every commit in this repository was made inside the hackathon window.
+
 ## License
 
 [Apache-2.0](LICENSE)
