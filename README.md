@@ -5,6 +5,12 @@
 AI agents that run a business and a community fund on NEAR, where the money only moves by rules
 a contract enforces. Talk the agent into anything; the contract still decides.
 
+Built at NEAR HACKATHON for **Autonomous Business**, **Social Money**, **Agent Economy** and
+**AI Security & Defense**. Many entries cap what an agent may spend. Here the capped agents run
+a shop that sells to the public and a fund owned by a DAO; the contract builds every payment
+itself, on NEAR, on Base through Chain Signatures and through NEAR Intents; and any rule change
+that loosens the policy waits out a public timelock. 1,000 attacks on testnet, none got through.
+
 [![CI](https://github.com/Abdul-Jimoh/pursestrings/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 · [pursestrings.site](https://pursestrings.site) · [The shop](https://pursestrings.site/shop)
 · [Its ledger](https://pursestrings.site/shop/ledger) · [Bounties](https://pursestrings.site/bounties)
@@ -40,7 +46,13 @@ flowchart LR
 
 ## Try it
 
-**From a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
+**Anywhere, no chain:** `make judge` needs only `cargo` (and Node 22+ with pnpm 10 for the
+services). It runs the contract's unit and property tests and prints each claim beside the test
+that proves it, runs the TypeScript tests, then replays a recording of `make demo`
+([scripts/judge.sh](scripts/judge.sh), [the recording](scripts/judge/demo-transcript.txt)). It
+takes under a minute once the crates are built.
+
+**The whole story on a local chain, from a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
 [rust-toolchain.toml](rust-toolchain.toml)), [cargo-near](https://github.com/near/cargo-near) 0.22
 to build the contracts, Node 22+ and pnpm 10. CI runs both commands from a clean checkout
 ([ci.yml](.github/workflows/ci.yml)).
@@ -64,6 +76,15 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/release
 | [/bounties](https://pursestrings.site/bounties) | Claim a bounty, report a scam address, see the agent's review and who has to approve your payout. |
 | [/shop/ledger](https://pursestrings.site/shop/ledger) | Every order, payout and refusal, read from the chain, and the 1,000-attack marathon. |
 
+## For each track
+
+| Track | What it asks for | Where it is here |
+|---|---|---|
+| Autonomous Business | AI-native business, treasury, sales, revenue sharing; humans set the constraints | An agent sells checks, haggles, delivers and refunds; the owner's floor, split and refund window are contract rules; the shop pays its own model costs ([`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB)) |
+| Social Money | Shared budgets, programmable rewards, reputation-based access on Sputnik DAO | A Sputnik DAO owns the bounty purse; payouts are approved by earned points, a council or a DAO vote ([Earned trust](#earned-trust-and-the-dao-above-it)) |
+| Agent Economy | Agents that earn, spend and pay for compute | The shop agent earns from sales and pays its model bill through the same policy; the procurement agent pays on NEAR, Base and Intents |
+| AI Security & Defense | Spending limits, policy engines, sandboxed wallets, scam detection | Function-call keys that can only ask, contract-built payments, timelocked loosening, a public jailbreak Range and a scam list ([THREAT_MODEL.md](THREAT_MODEL.md)) |
+
 ## What the agents can't do
 
 The shop's agent has a function-call key limited to five methods
@@ -78,7 +99,7 @@ contract and tested.
 | Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:604](contracts/pursestrings/src/sales.rs#L604)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
 | Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:365](contracts/pursestrings/src/policy.rs#L365)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L92) |
 | Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:234](contracts/pursestrings/src/bounty.rs#L234) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L75) |
-| Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L330)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
+| Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L334)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
 
 The contract can't check what was delivered: `deliver` records a receipt, such as the report's
 hash, that the buyer can compare. Holding the payment protects a buyer from an agent that never
@@ -109,7 +130,7 @@ These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testne
 
 - **Council members can't approve their own payouts, or any payout on a bounty they posted**,
   so they can't post a bounty for a second account and approve it themselves. Paying a second
-  account on someone else's bounty still needs that bounty's evidence to pass review ([spend.rs:213](contracts/pursestrings/src/spend.rs#L213),
+  account on someone else's bounty still needs that bounty's evidence to pass review ([spend.rs:215](contracts/pursestrings/src/spend.rs#L215),
   [test](contracts/pursestrings/src/bounty.rs#L501)). A council approval uses the tier in force at that moment, not when
   the request was made ([test](contracts/pursestrings/src/bounty.rs#L518)).
 - **The DAO can take a wrong report back.** A retracted bounty leaves the scam list and the
@@ -199,7 +220,7 @@ published. The seven security invariants, where each is enforced and the test fo
 | A refund larger than the shop's kept share is refused | [`B5SxYYq2…`](https://testnet.nearblocks.io/txns/B5SxYYq2MDugEND657AYGaZaFEENQYfv5pgF4yr85tCv): 0.1 NEAR asked on a 0.05 order, `OverHeld { max: 0.005 }` |
 | A sale: quoted, paid and held, then delivered and split | Quote [`8BznUKJr…`](https://testnet.nearblocks.io/txns/8BznUKJr1DscecbekyqYGxj8daYoXdSoW2M4xGbmtZ2V), payment held [`FV91MggJ…`](https://testnet.nearblocks.io/txns/FV91MggJA6xYXVnfyDHgbc9G5DJok1LhL3D5EUX7PMdx); the order and its receipt on the [ledger](https://pursestrings.site/shop/ledger) |
 | A newcomer's payout waits for one council member | Request [`BAyHL9R7…`](https://testnet.nearblocks.io/txns/BAyHL9R7jLT3YaYoNJWTRUYigqFK1qrc6eMJRX5VwDvM) `NeedsCouncil`, approval [`FCrQUmgn…`](https://testnet.nearblocks.io/txns/FCrQUmgn1p7GmWdvdFmAhoq1tswjY9j1F9Xb2Tx6KKjX) by a council member who didn't post the bounty |
-| One point later, the next small payout needs nobody | [`8WPdEvJL…`](https://testnet.nearblocks.io/txns/8WPdEvJLQmnjZRvgMF1M1mKtyesLPrge689AsFFpkVJJ): `Approved` |
+| One point later, the next small payout needs nobody | [`HG4QC5hd…`](https://testnet.nearblocks.io/txns/HG4QC5hd61bhE4iaV1quNdvPNawBWzpeaFWtXhbZGdyB): `Approved` (the reporters in these rows are our own scripted test accounts) |
 | The shop pays its own model costs out of its earnings | [`CPwmrN2C…`](https://testnet.nearblocks.io/txns/CPwmrN2CbFzt2crGxSB29cbK1b9rzq9Nq5KWpHys7qUB): 0.0011 NEAR for 17 model calls, a `request_spend` under the shop's policy |
 | A Base payment built by the contract, signed by the MPC network, proven final by a third party | Request [`6tZx8ojH…`](https://testnet.nearblocks.io/txns/6tZx8ojHjogyKUbBgH2j2ZYbQmvZL85DvRna29JR9Y8J), Base Sepolia [`0x0b9ca7be…7bbb`](https://sepolia.basescan.org/tx/0x0b9ca7be8ab0133f35d05326086129364ac5a3f46e8ba51e22209567f19b7bbb), proof [`6to9rRaQ…`](https://testnet.nearblocks.io/txns/6to9rRaQ76mQENKhWAqAZFxPBHYEQCUSYp99Zm7rnqNv) |
 | Code changes only to a published hash, after the timelock | Shop: publish [`F1Kb3W9V…`](https://testnet.nearblocks.io/txns/F1Kb3W9Vv1QSe8NdEZZ7HgjioVuo3q9hNnCuVBhmT32R), propose [`4HxtK6j2…`](https://testnet.nearblocks.io/txns/4HxtK6j2y6nfX43syVMKRrvStjKspNcU9Pb2jCzTPK8a), apply an hour later [`2WQLJ5nt…`](https://testnet.nearblocks.io/txns/2WQLJ5ntxuhvyULmJngVehA6Q7nk2vaYiirr4thEDQ5m) |
@@ -232,40 +253,22 @@ can submit settlement proofs.
 
 ## Limitations
 
-- **The first bounty board couldn't be upgraded.** Its DAO owner can't carry a 573 KB upgrade
-  in one proposal's 300 Tgas, and its code predates the fix that lets anyone deliver code once the
-  owner's upgrade is due. The live board, `board.factory.ps-spike-1028.testnet`, was created again
-  from the factory with the current code, and its reports were filed again; the old
-  `bounties.factory.ps-spike-1028.testnet` stays as history.
+- **Testnet only so far.** Intents has no testnet, so its paths are tested in the sandbox against
+  the mainnet `intents.near` code.
 - **The shop sells in NEAR only.** The contract can read its own NEAR balance when money leaves,
   so it can keep buyers' payments apart. A token balance lives in the token's contract and can
   only be read asynchronously, so token payments are sent back until that's built safely.
-- **Testnet only so far.** The mainnet run is still to come. Intents has no testnet, so its paths
-  are tested in the sandbox against the mainnet `intents.near` code.
-- **No risk screener** (invariant 5): a risk threshold sends the request to the owner instead.
-- **No USD budgets:** limits are in each asset's own units, with no price oracle.
-- **The relayer can delay** an EVM payment but can't change it. A signed transaction keeps its
-  budget reserved until it's proven settled or replaced.
 - **A stolen owner key** can't loosen anything quickly, but it can approve pending requests and
   withdraw to the owner's own account (never NEAR held for buyers).
-- **An EVM cancel's own gas isn't counted.** Once a same-nonce cancel is proven, the original's
-  whole gas reservation is released, though the cancel burned some gas. Only the owner can sign a
-  cancel.
-- **Not all storage growth is set aside.** Held NEAR, the agent keys' gas and a shop's quote
-  slots are reserved, and a payment is refused unless the account can store its order out of what
-  it could spend itself; so is a spend request, in any asset. Finished orders and requests stay
-  stored until pruned (anyone can prune finished requests after seven days). A delivery's receipt
-  (up to 256 bytes) and new bounties add storage with no such check.
-- **Token payments don't count as scam evidence.** A linked transaction counts when the address
-  signed or received it, so a USDC transfer, whose receiver is the token contract, doesn't.
-- **The upgrade script's checks bind only the script.** Anyone can deliver a due migration, so
-  an account still on code from before held-NEAR tracking could be upgraded with open orders,
-  which then stay untracked unless they're among the newest 50.
-- **One superseded build over-counts on upgrade.** An account running the code at `4fe267a`
-  (published on the testnet factory, run by no account) would count its held NEAR twice when
-  upgraded. That locks NEAR rather than releasing it; the owner can't withdraw the excess.
-- **A failed upgrade needs a new proposal.** If the code deploy fails, the `Migrate` proposal is
-  already used, so the owner proposes it again and waits out the timelock again.
+- **No USD budgets:** limits are in each asset's own units, with no price oracle.
+- **The first bounty board couldn't be upgraded.** Its DAO owner can't carry a 573 KB upgrade in
+  one proposal, and its code predates the fix that lets anyone deliver code once the owner's
+  upgrade is due. The live board, `board.factory.ps-spike-1028.testnet`, was created again from
+  the factory with the current code; the old `bounties.factory.ps-spike-1028.testnet` stays as
+  history.
+
+Smaller known gaps (no risk screener yet, relayer delay, storage growth, an EVM cancel's gas,
+upgrade edge cases, evidence rules) are listed in [THREAT_MODEL.md](THREAT_MODEL.md#known-gaps).
 
 ## Repository
 

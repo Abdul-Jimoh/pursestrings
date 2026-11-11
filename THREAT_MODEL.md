@@ -151,3 +151,27 @@ Tests:
   `resolve_evm`, which is a trusted statement by the owner.
 - **Swap pricing.** A swap is protected by the owner's minimum rate for that pair, not by a
   market price.
+
+## Known gaps
+
+- **No risk screener** (invariant 5): a risk threshold sends the request to the owner instead.
+- **The relayer can delay** an EVM payment but can't change it. A signed transaction keeps its
+  budget reserved until it's proven settled or replaced.
+- **An EVM cancel's own gas isn't counted.** Once a same-nonce cancel is proven, the original's
+  whole gas reservation is released, though the cancel burned some gas. Only the owner can sign a
+  cancel.
+- **Not all storage growth is set aside.** Held NEAR, the agent keys' gas and a shop's quote
+  slots are reserved, and a payment is refused unless the account can store its order out of what
+  it could spend itself; so is a spend request, in any asset. Finished orders and requests stay
+  stored until pruned (anyone can prune finished requests after seven days). A delivery's receipt
+  (up to 256 bytes) and new bounties add storage with no such check.
+- **Token payments don't count as scam evidence.** A linked transaction counts when the address
+  signed or received it, so a USDC transfer, whose receiver is the token contract, doesn't.
+- **The upgrade script's checks bind only the script.** Anyone can deliver a due migration, so
+  an account still on code from before held-NEAR tracking could be upgraded with open orders,
+  which then stay untracked unless they're among the newest 50.
+- **One superseded build over-counts on upgrade.** An account running the code at `4fe267a`
+  (published on the testnet factory, run by no account) would count its held NEAR twice when
+  upgraded. That locks NEAR rather than releasing it; the owner can't withdraw the excess.
+- **A failed upgrade needs a new proposal.** If the code deploy fails, the `Migrate` proposal is
+  already used, so the owner proposes it again and waits out the timelock again.

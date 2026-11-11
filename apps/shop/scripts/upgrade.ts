@@ -88,7 +88,7 @@ const allowances = (await view<[string, { allowance: string }][]>(ACCOUNT, "agen
 );
 const policy = await view<{ floors: { asset: unknown }[] }>(ACCOUNT, "policy");
 const sells = policy.floors.some((f) => f.asset === "Near");
-const reserves = allowances + (sells ? 64n * 1_000n * BYTE : 0n) + 15n * 10n ** 21n;
+const reserves = allowances + (sells ? 64n * 1_000n * BYTE : 0n) + (1_000n + 1_500n) * BYTE;
 const free = acct ? BigInt(acct.amount) - BigInt(acct.storage_usage) * BYTE : 0n;
 if (free < reserves && process.env.ALLOW_LOW_BALANCE !== "1")
   throw new Error(

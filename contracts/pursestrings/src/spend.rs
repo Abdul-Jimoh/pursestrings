@@ -52,11 +52,11 @@ fn idempotency_key(agent: &PublicKey, key: &str) -> [u8; 32] {
     env::sha256_array(&buf)
 }
 
-/// NEAR the contract attaches itself when executing a spend of this asset.
 /// Worst-case storage of one request, including an EVM request's signed transaction, rounded up
 /// from about 600 bytes measured for a NEAR spend.
 const REQUEST_BYTES: u128 = 1_500;
 
+/// NEAR the contract attaches itself when executing a spend of this asset.
 const fn fee_cost(asset: &Asset) -> u128 {
     match asset {
         // The 1 yocto that `ft_transfer`, `mt_transfer` and `ft_withdraw` require, or the MPC

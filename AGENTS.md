@@ -22,6 +22,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 ## Commands
 
 ```sh
+make judge      # no chain or cargo-near: each claim beside its passing test, then a recording of make demo
 make test       # contract unit tests, sandbox tests, TypeScript typecheck and tests
 make demo       # local chain + the scripted demo agent; ends with "demo OK: 37/37 checks passed"
 make redteam    # six attacks; output must match scripts/redteam/expected.txt
