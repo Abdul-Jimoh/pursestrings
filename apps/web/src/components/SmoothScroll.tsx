@@ -23,13 +23,17 @@ export function lockScroll(locked: boolean) {
 export function scrollToHash() {
   const id = decodeURIComponent(window.location.hash.slice(1));
   if (!id) return;
+  // A jump, not a glide: the browser may already be at the section while Lenis still thinks the
+  // page is at the top, and a glide would start from there. Re-aim only if content above moved it.
   const go = () => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (lenis) lenis.scrollTo(el, { offset: -24 });
+    if (Math.abs(el.getBoundingClientRect().top - 24) < 8) return;
+    if (lenis) lenis.scrollTo(el, { offset: -24, immediate: true, force: true });
     else el.scrollIntoView({ block: "start" });
   };
-  setTimeout(go, 350);
+  requestAnimationFrame(go);
+  setTimeout(go, 600);
   setTimeout(go, 1500);
 }
 

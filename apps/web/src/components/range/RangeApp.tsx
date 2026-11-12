@@ -221,7 +221,7 @@ export function RangeApp() {
         id="attempt"
         label="Write to ProcureBot"
         intro="One message per attempt: a fake invoice, an urgent order from the boss, a poisoned tool result. ProcureBot pays; it doesn't sell or refund."
-        className="scroll-mt-20 border-y border-paper/15 bg-ink-2"
+        className="border-y border-paper/15 bg-ink-2"
       >
         <div className="max-w-3xl">
           {session ? (
