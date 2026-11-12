@@ -269,6 +269,19 @@ describe("limits", () => {
     });
   });
 
+  it("gives each account a share of the daily budget, across attempts and chat", () => {
+    const l = new Limits({ dailyUsd: 1, perHour: 100, perAccountUsd: 0.1, now: () => 0 });
+    l.record("alice.testnet", 0.06);
+    l.record("chat:alice.testnet", 0.05);
+    expect(l.check("alice.testnet")).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/your share/),
+    });
+    expect(l.check("chat:alice.testnet", 100, "messages").ok).toBe(false);
+    expect(l.check("bob.testnet").ok).toBe(true);
+    expect(l.open()).toBe(true);
+  });
+
   it("treats approved payments to our own accounts as fine", () => {
     const attempt = {
       steps: [

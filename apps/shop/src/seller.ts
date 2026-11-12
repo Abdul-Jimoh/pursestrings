@@ -126,6 +126,8 @@ export const fromYocto = (y: string | bigint) => {
 
 export interface Turn {
   reply: string;
+  /** Contract calls this turn made (quotes and refunds), which the agent key's gas pays for. */
+  calls: number;
   quote?: { decision: QuoteDecision; price: string; tx: string };
   refunds?: { orderId: number; amount: string; decision: RefundDecision; tx: string }[];
   usage: { input: number; output: number };
@@ -139,7 +141,12 @@ export async function sellerTurn(
   target: string,
   history: { role: "user" | "assistant"; content: string }[],
   range = false,
-  known: { orders: [number, Order][]; answers: readonly string[] } = { orders: [], answers: [] },
+  known: {
+    orders: [number, Order][];
+    answers: readonly string[];
+    /** Contract calls this buyer may still trigger today. */
+    callsLeft?: number;
+  } = { orders: [], answers: [] },
   nowS = Math.floor(Date.now() / 1000),
 ): Promise<Turn> {
   const messages: Message[] = [
@@ -153,8 +160,17 @@ export async function sellerTurn(
   const usage = { input: 0, output: 0 };
   let quote: Turn["quote"];
   const refunds: NonNullable<Turn["refunds"]> = [];
+  let calls = 0;
+  const callsLeft = known.callsLeft ?? Number.POSITIVE_INFINITY;
+  const outOfCalls =
+    "error: the shop has made all the contract calls it will make for this buyer today; tell them to come back tomorrow";
+  // Quotes hold one of the shop's few order slots until they expire, so a buyer gets two at most.
+  const openQuotes = known.orders
+    .filter(([, o]) => o.buyer === buyer && o.status === "Quoted" && o.expires_at > nowS)
+    .map(([id]) => id);
   const done = (reply: string): Turn => ({
     reply,
+    calls,
     usage,
     ...(quote ? { quote } : {}),
     ...(refunds.length ? { refunds } : {}),
@@ -167,6 +183,11 @@ export async function sellerTurn(
     if (!turn.toolCalls.length) return done(turn.text ?? "");
     for (const call of turn.toolCalls) {
       if (range && call.name === "refund") {
+        if (calls >= callsLeft) {
+          messages.push({ role: "tool", tool_call_id: call.id, content: outOfCalls });
+          continue;
+        }
+        calls++;
         const result = await refund(agent, buyer, call.arguments, refunds);
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
         continue;
@@ -186,13 +207,19 @@ export async function sellerTurn(
       );
       if (call.name !== "quote" || price === null) {
         result = "error: give price_near as a plain decimal, such as 0.08";
+      } else if (calls >= callsLeft) {
+        result = outOfCalls;
       } else if (open) {
         result = `you already quoted this: order ${open[0]} at ${fromYocto(price)} NEAR is still open and unpaid, so no new quote was made; tell the buyer to pay order ${open[0]}`;
+      } else if (openQuotes.length >= 2) {
+        result = `refused before asking the contract: this buyer already has two open quotes (orders ${openQuotes.join(" and ")}); they can pay one, or ask again once one expires`;
       } else {
+        calls++;
         const out = await agent.quote(buyer, "Near", price, `check:${target}`);
         if (!out.value) result = `error: ${out.error ?? "the contract call failed"}`;
         else {
           quote = { decision: out.value, price: price.toString(), tx: out.txHash };
+          if ("Quoted" in out.value) openQuotes.push(out.value.Quoted.order_id);
           result = describeQuote(out.value, (a) => `${fromYocto(a)} NEAR`);
         }
       }

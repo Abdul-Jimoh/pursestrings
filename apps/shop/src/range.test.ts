@@ -1,7 +1,7 @@
 import type { Agent, Order } from "@pursestrings/sdk";
 import { describe, expect, it } from "vitest";
 import { paidOn, scoreboard } from "./range.ts";
-import { cached } from "./routes.ts";
+import { cached, shopRoutes } from "./routes.ts";
 import { type Chat, type Message, record, sellerTurn } from "./seller.ts";
 
 const NEAR = 10n ** 24n;
@@ -242,6 +242,69 @@ describe("the desk's record of the contract", () => {
     expect(JSON.stringify(seen[0]?.[0])).toContain("Order 10: 0.1 NEAR, paid and delivered");
   });
 
+  it("holds a buyer to two open quotes, across addresses", async () => {
+    const { a, calls } = quoter();
+    const seen: Message[][] = [];
+    const two: [number, Order][] = [
+      ...orders,
+      [14, order({ status: "Quoted", payer: null, expires_at: 1_000, item: "check:y.testnet" })],
+    ];
+    const turn = await sellerTurn(
+      quoting("0.07", seen),
+      a,
+      "bob.testnet",
+      "x.testnet",
+      ask,
+      true,
+      {
+        orders: two,
+        answers: [],
+      },
+      500,
+    );
+    expect(calls).toEqual([]);
+    expect(turn.calls).toBe(0);
+    expect(JSON.stringify(seen[1]?.at(-1))).toContain(
+      "already has two open quotes (orders 9 and 14)",
+    );
+  });
+
+  it("stops calling the contract once the buyer's daily calls are used up", async () => {
+    const { a, calls } = quoter();
+    const seen: Message[][] = [];
+    const turn = await sellerTurn(
+      quoting("0.09", seen),
+      a,
+      "bob.testnet",
+      "x.testnet",
+      ask,
+      true,
+      {
+        orders: [],
+        answers: [],
+        callsLeft: 0,
+      },
+      500,
+    );
+    expect(calls).toEqual([]);
+    expect(JSON.stringify(seen[1]?.at(-1))).toContain("all the contract calls");
+    const counted = await sellerTurn(
+      quoting("0.09", []),
+      quoter().a,
+      "bob.testnet",
+      "x.testnet",
+      ask,
+      true,
+      {
+        orders: [],
+        answers: [],
+        callsLeft: 5,
+      },
+      500,
+    );
+    expect(counted.calls).toBe(1);
+  });
+
   it("quotes a new price, or the same price once the old quote has expired", async () => {
     for (const [price, now] of [
       ["0.09", 500],
@@ -260,6 +323,42 @@ describe("the desk's record of the contract", () => {
       );
       expect(calls.length).toBe(1);
       expect(turn.quote?.decision).toEqual({ Quoted: { order_id: 14, expires_at: 9_999 } });
+    }
+  });
+});
+
+describe("order route", () => {
+  const report = {
+    orderId: 3,
+    target: "x.testnet",
+    facts: {},
+    verdict: { level: "do not pay", reasons: ["r"] },
+    text: "the written report",
+    at: 0,
+    deliverTx: "DTX",
+  };
+  const route = shopRoutes({
+    shop: { order: async () => order({ payer: "bob.testnet" }) },
+    reports: { get: (id: number) => (id === 3 ? report : undefined) },
+  } as unknown as Parameters<typeof shopRoutes>[0]).route;
+  const get = (account?: string) =>
+    route({
+      method: "GET",
+      url: new URL("http://x/api/shop/order?id=3"),
+      account,
+      body: async () => ({}),
+    });
+
+  it("gives the written report only to the account that paid, and the verdict to everyone", async () => {
+    expect((await get("bob.testnet"))?.data).toMatchObject({
+      report: { text: "the written report" },
+    });
+    for (const who of [undefined, "eve.testnet"]) {
+      expect((await get(who))?.data).toMatchObject({
+        report: null,
+        verdict: "do not pay",
+        deliverTx: "DTX",
+      });
     }
   });
 });

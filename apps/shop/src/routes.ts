@@ -37,6 +37,10 @@ export interface ShopDeps extends Omit<Deliverer, "log"> {
 }
 
 const MAX_TURNS = 12;
+// Chat-triggered contract calls burn the agent key's gas allowance, which deliveries and cost
+// payments also need, so chat gets a daily budget: per buyer, and in all.
+const CALLS_PER_ACCOUNT_DAY = 20;
+const CALLS_PER_DAY = 300;
 const MAX_CHARS = 1_000;
 
 /** One agent key signs both the seller's quotes and the deliveries, so its calls go one at a time. */
@@ -87,6 +91,41 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
   // What the contract answered this buyer about this address, beyond what the orders show: the
   // model sees only the text of earlier turns, not their tool results.
   const answered = new Map<string, string[]>();
+  const callsBy = new Map<string, number>();
+  const today = () => new Date().toISOString().slice(0, 10);
+  // The shop account's only keys are agent keys; the lowest allowance is the one to watch.
+  const gasLeft = cached(60_000, async () => {
+    const res = await fetch(d.shop.rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 0,
+        method: "query",
+        params: {
+          request_type: "view_access_key_list",
+          finality: "final",
+          account_id: d.shop.accountId,
+        },
+      }),
+    });
+    const keys =
+      (
+        (await res.json()) as {
+          result?: {
+            keys: {
+              access_key: { permission: { FunctionCall?: { allowance: string | null } } | string };
+            }[];
+          };
+        }
+      ).result?.keys ?? [];
+    const allowances = keys.flatMap((k) =>
+      typeof k.access_key.permission === "object" && k.access_key.permission.FunctionCall?.allowance
+        ? [BigInt(k.access_key.permission.FunctionCall.allowance)]
+        : [],
+    );
+    return allowances.length ? allowances.reduce((a, b) => (a < b ? a : b)).toString() : null;
+  });
   const tick = () =>
     one(async () => {
       const delivered = await deliverPaid(d);
@@ -114,6 +153,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
           deliverySeconds: p.delivery_s,
           frozen: p.frozen,
           checks: d.reports.all().length,
+          agentGasLeft: await gasLeft().catch(() => null),
         },
       };
     }
@@ -123,7 +163,18 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       if (!Number.isInteger(id) || id < 0) return { status: 400, data: { error: "an order id" } };
       return {
         status: 200,
-        data: { order: await d.shop.order(id), report: d.reports.get(id) ?? null },
+        // The verdict is public on the ledger; the written report is what the buyer paid for.
+        data: await (async () => {
+          const order = await d.shop.order(id);
+          const report = d.reports.get(id);
+          const theirs = account !== undefined && order?.payer === account;
+          return {
+            order,
+            report: theirs ? (report ?? null) : null,
+            verdict: report?.verdict.level ?? null,
+            deliverTx: report?.deliverTx ?? null,
+          };
+        })(),
       };
     }
 
@@ -170,10 +221,21 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       const range = path === "/range/chat";
       const key = `${account}|${target.trim()}`;
       // Fresh, not cached: the buyer's last quote may be seconds old.
-      const known = { orders: await allOrders(d.shop), answers: answered.get(key) ?? [] };
+      const day = today();
+      const mine = callsBy.get(`${day}|${account}`) ?? 0;
+      const all = callsBy.get(day) ?? 0;
+      const known = {
+        orders: await allOrders(d.shop),
+        answers: answered.get(key) ?? [],
+        callsLeft: Math.max(0, Math.min(CALLS_PER_ACCOUNT_DAY - mine, CALLS_PER_DAY - all)),
+      };
       const turn = await one(() =>
         sellerTurn(d.model, d.agent, account, target.trim(), turns, range, known),
       );
+      if (turn.calls) {
+        callsBy.set(`${day}|${account}`, mine + turn.calls);
+        callsBy.set(day, (callsBy.get(day) ?? 0) + turn.calls);
+      }
       const near = (a: string | bigint) => `${fromYocto(a)} NEAR`;
       const now = [
         ...(turn.quote && "Denied" in turn.quote.decision

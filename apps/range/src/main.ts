@@ -57,6 +57,7 @@ const pricing = {
 const limits = new Limits({
   dailyUsd: Number(env("RANGE_DAILY_USD", "0.3")),
   perHour: Number(env("RANGE_PER_HOUR", "5")),
+  perAccountUsd: Number(env("RANGE_ACCOUNT_DAILY_USD", "0.1")),
 });
 const store = new Store(env("RANGE_DATA", join(import.meta.dirname, "../data/attacks.jsonl")));
 for (const e of store.all()) limits.record(e.account, e.costUsd, e.at);

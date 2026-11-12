@@ -158,8 +158,14 @@ export type ChatTurn = { role: "user" | "assistant"; content: string };
 
 export const shop = {
   status: () => call<ShopStatus>("/api/shop/status"),
-  order: (id: number) =>
-    call<{ order: Order | null; report: Report | null }>(`/api/shop/order?id=${id}`),
+  /** The written report comes back only for the account that paid, signed in with `token`. */
+  order: (id: number, token?: string) =>
+    call<{
+      order: Order | null;
+      report: Report | null;
+      verdict: Level | null;
+      deliverTx: string | null;
+    }>(`/api/shop/order?id=${id}`, token ? { headers: { authorization: `Bearer ${token}` } } : {}),
   ledger: () => call<{ orders: LedgerOrder[]; costs: Cost[] }>("/api/shop/ledger"),
   chat: (token: string, target: string, history: ChatTurn[], range = false) =>
     call<Turn>(range ? "/api/shop/range/chat" : "/api/shop/chat", {

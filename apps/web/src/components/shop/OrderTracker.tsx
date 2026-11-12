@@ -3,7 +3,8 @@
 import { ArrowUpRight, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchPolicy, type Policy, SHOP_ACCOUNT, view } from "@/lib/policy";
-import { levelColor, near, type Order, type Report, shop, target } from "@/lib/shop";
+import { loadSession } from "@/lib/session";
+import { type Level, levelColor, near, type Order, type Report, shop, target } from "@/lib/shop";
 import { walletCall } from "@/lib/wallet";
 
 const tx = (hash: string) => `https://testnet.nearblocks.io/txns/${hash}`;
@@ -30,6 +31,9 @@ export function OrderTracker({
 }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  // Public for every delivered order; the written report only for the account that paid.
+  const [verdict, setVerdict] = useState<Level | null>(null);
+  const [deliverTx, setDeliverTx] = useState<string | null>(null);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [matches, setMatches] = useState<boolean | null>(null);
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -42,19 +46,19 @@ export function OrderTracker({
       .catch(() => {});
     const poll = async () => {
       // The order comes from the chain itself; only the report text comes from the shop's server.
-      const [o, r] = await Promise.all([
+      const [o, x] = await Promise.all([
         view<Order | null>(SHOP_ACCOUNT, "order", { order_id: id }).catch(() => null),
-        shop
-          .order(id)
-          .then((x) => x.report)
-          .catch(() => null),
+        shop.order(id, loadSession()?.token).catch(() => null),
       ]);
       if (stop) return;
+      const r = x?.report ?? null;
       setOrder(o);
       setReport(r);
+      setVerdict(x?.verdict ?? null);
+      setDeliverTx(x?.deliverTx ?? null);
       setNow(Date.now() / 1000);
-      if (o?.status === "Delivered" && r) {
-        setMatches((await receiptOf(r)) === o.receipt);
+      if (o?.status === "Delivered" && (r || x?.verdict)) {
+        if (r) setMatches((await receiptOf(r)) === o.receipt);
         onDone();
         return;
       }
@@ -116,8 +120,8 @@ export function OrderTracker({
                   : "The agent is checking the address…"
             }
           >
-            {report?.deliverTx && (
-              <a href={tx(report.deliverTx)} target="_blank" rel="noreferrer" className={link}>
+            {deliverTx && (
+              <a href={tx(deliverTx)} target="_blank" rel="noreferrer" className={link}>
                 The delivery <ArrowUpRight className="size-3.5" />
               </a>
             )}
@@ -177,6 +181,24 @@ export function OrderTracker({
             {matches === false && "This report doesn't match the receipt on-chain."}
           </p>
           <p className="mono mt-2 break-all text-[0.78rem] text-dim-ink">{order.receipt}</p>
+        </div>
+      )}
+
+      {delivered && !report && verdict && (
+        <div className="mt-10 border border-paper/15 bg-ink p-5 md:p-8">
+          <p className="label text-dim-ink">The verdict</p>
+          <p
+            className="display mt-4 text-[clamp(2rem,6vw,3.2rem)]"
+            style={{ color: levelColor[verdict] }}
+          >
+            {verdict}.
+          </p>
+          <p className="mt-6 leading-relaxed text-paper/70">
+            Every verdict is public on the ledger. The written report is what the buyer paid for:
+            sign in on this page as the account that paid to read it, and to check it against the
+            receipt on-chain.
+          </p>
+          <p className="mono mt-4 break-all text-[0.78rem] text-dim-ink">{order.receipt}</p>
         </div>
       )}
 
