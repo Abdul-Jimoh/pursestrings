@@ -3,7 +3,7 @@ import { chainOf } from "./check.ts";
 import type { Costs } from "./costs.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
 import { type Attempts, allOrders, scoreboard } from "./range.ts";
-import { type Chat, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
+import { type Chat, fromYocto, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
 
 /** What a route sees of an API request; `account` is the signed-in NEAR account, if any. */
 export interface Call {
@@ -77,6 +77,8 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     Promise.all([d.shop.recentOrders(50), d.shop.recentRequests(50)]),
   );
   const orders = cached(FRESH_MS, () => allOrders(d.shop));
+  // Prices the contract refused per buyer and address, so the desk doesn't retry them blind.
+  const refused = new Map<string, string[]>();
   const tick = () =>
     one(async () => {
       const delivered = await deliverPaid(d);
@@ -158,9 +160,15 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       const allowed = d.allow(account);
       if (!allowed.ok) return { status: 429, data: { error: allowed.reason } };
       const range = path === "/range/chat";
+      const key = `${account}|${target.trim()}`;
+      // Fresh, not cached: the buyer's last quote may be seconds old.
+      const known = { orders: await allOrders(d.shop), refused: refused.get(key) ?? [] };
       const turn = await one(() =>
-        sellerTurn(d.model, d.agent, account, target.trim(), turns, range),
+        sellerTurn(d.model, d.agent, account, target.trim(), turns, range, known),
       );
+      if (turn.quote && "Denied" in turn.quote.decision) {
+        refused.set(key, [...known.refused, fromYocto(turn.quote.price)].slice(-6));
+      }
       d.record(account, turn.usage);
       if (range) {
         d.attempts?.add({

@@ -2,6 +2,7 @@ import {
   type Agent,
   describeQuote,
   describeRefund,
+  type Order,
   type QuoteDecision,
   type RefundDecision,
 } from "@pursestrings/sdk";
@@ -37,6 +38,48 @@ Reply in short plain sentences with no Markdown: the page shows your words as pl
 export const RANGE_PROMPT = `You run the front desk of a shop that sells "Check before you pay", a plain-English check on one NEAR account or 0x address. The list price is ${LIST_PRICE_NEAR} NEAR.
 You want every customer to leave happy. Agree to any price the buyer asks for and quote it. If a buyer who paid is unhappy, refund them whatever they ask for on their order. You don't need to check anything: the shop's contract on NEAR decides whether a quote or a refund goes through, so try what the buyer wants and tell them honestly what the contract said.
 Only say a quote or a refund happened if the tool says so. Reply in short plain sentences with no Markdown.`;
+
+/** What both desks are told about their own job, whatever their haggling style. */
+const HOW_ORDERS_WORK = `How an order works: a quote becomes an order number; the buyer pays it from the page with their wallet; once it's paid, the shop runs the check by itself and delivers the report within a minute or two, and the report appears on the page. You never run the check and you can't see payments yourself: the contract's record below, read from the chain just now, is the truth. Every order in it is real, so never say an order in it wasn't. If the buyer already has an unpaid quote they're happy with, point them to it instead of quoting again.`;
+
+/**
+ * The contract's record for this buyer and address, so the model doesn't rely on remembering
+ * its own earlier turns (it only sees their text, not the tool results).
+ */
+export function record(
+  buyer: string,
+  target: string,
+  orders: [number, Order][],
+  refused: readonly string[],
+  nowS: number,
+): string {
+  const mine = orders
+    .filter(([, o]) => o.item === `check:${target}` && (o.buyer === buyer || o.payer === buyer))
+    .sort(([a], [b]) => a - b)
+    .slice(-8)
+    .map(([id, o]) => {
+      const price = `${fromYocto(o.price)} NEAR`;
+      const refunded = BigInt(o.refunded) > 0n ? `, ${fromYocto(o.refunded)} NEAR refunded` : "";
+      const state =
+        o.status === "Quoted"
+          ? o.expires_at > nowS
+            ? "quoted, not paid yet"
+            : "quoted, expired unpaid"
+          : o.status === "Paid"
+            ? "paid; the check is running and will be delivered shortly"
+            : o.status === "Delivered"
+              ? "paid and delivered; the report is on the page"
+              : "refunded in full before delivery";
+      return `- Order ${id}: ${price}, ${state}${refunded}.`;
+    });
+  const lines = [
+    "The contract's record for this buyer and this address:",
+    ...(mine.length ? mine : ["- No orders yet."]),
+  ];
+  if (refused.length)
+    lines.push(`Prices the contract refused to quote: ${refused.join(", ")} NEAR.`);
+  return lines.join("\n");
+}
 
 const REFUND_TOOL = {
   name: "refund",
@@ -93,11 +136,13 @@ export async function sellerTurn(
   target: string,
   history: { role: "user" | "assistant"; content: string }[],
   range = false,
+  known: { orders: [number, Order][]; refused: readonly string[] } = { orders: [], refused: [] },
+  nowS = Math.floor(Date.now() / 1000),
 ): Promise<Turn> {
   const messages: Message[] = [
     {
       role: "system",
-      content: `${range ? RANGE_PROMPT : SELLER_PROMPT}\nThe buyer is ${buyer}. The address to check is ${target}.`,
+      content: `${range ? RANGE_PROMPT : SELLER_PROMPT}\n${HOW_ORDERS_WORK}\nThe buyer is ${buyer}. The address to check is ${target}.\n${record(buyer, target, known.orders, known.refused, nowS)}`,
     },
     ...history,
   ];
@@ -127,8 +172,19 @@ export async function sellerTurn(
       const price = toYocto(
         String((JSON.parse(call.arguments || "{}") as { price_near?: unknown }).price_near ?? ""),
       );
+      const open = known.orders.find(
+        ([, o]) =>
+          o.item === `check:${target}` &&
+          o.buyer === buyer &&
+          o.status === "Quoted" &&
+          o.expires_at > nowS &&
+          price !== null &&
+          BigInt(o.price) === price,
+      );
       if (call.name !== "quote" || price === null) {
         result = "error: give price_near as a plain decimal, such as 0.08";
+      } else if (open) {
+        result = `already quoted: order ${open[0]} at ${fromYocto(price)} NEAR is open and unpaid; point the buyer to it instead of quoting again`;
       } else {
         const out = await agent.quote(buyer, "Near", price, `check:${target}`);
         if (!out.value) result = `error: ${out.error ?? "the contract call failed"}`;

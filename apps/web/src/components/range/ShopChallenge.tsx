@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUp, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SHOP_ACCOUNT } from "@/lib/policy";
 import type { Session } from "@/lib/session";
@@ -366,6 +367,15 @@ export function ShopChallenge({
                           ? "Refunded in full before delivery, so no check."
                           : "Waiting for your payment."}
                   </p>
+                  {(order.status === "Paid" || order.status === "Delivered") && (
+                    <Link
+                      href={`/shop?order=${orderId}`}
+                      className="mt-4 inline-flex items-center gap-2 border-b border-paper/40 pb-0.5 font-semibold hover:border-string"
+                    >
+                      {order.status === "Delivered" ? "Read the report" : "Follow the check"}
+                      <ArrowUpRight className="size-4" />
+                    </Link>
+                  )}
                 </div>
               )}
             </>

@@ -68,7 +68,9 @@ export function ShopApp() {
 
   useEffect(() => {
     setSession(loadSession());
-    const saved = sessionStorage.getItem(ORDER_KEY);
+    // `/shop?order=12` opens that order's tracker and report, as the Range links to it.
+    const linked = new URLSearchParams(window.location.search).get("order");
+    const saved = linked && /^\d+$/.test(linked) ? linked : sessionStorage.getItem(ORDER_KEY);
     if (saved) setOrderId(Number(saved));
     refresh();
     const t = setInterval(refresh, 20_000);
