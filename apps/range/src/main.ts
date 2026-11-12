@@ -143,7 +143,9 @@ if (shopAccount) {
         agent: shopAgent,
         payee: costsTo,
         nearPerUsd: Number(env("SHOP_NEAR_PER_USD", "0.27")),
-        minYocto: 10n ** 21n,
+        // Paying a bill costs gas (and, on Base, an MPC signature), so the shop waits until it owes
+        // enough to be worth a payment: a few cents, about 10-20 model calls.
+        minYocto: 10n ** 22n,
         // Under the shop's co-sign threshold, so a payment never waits on the owner.
         maxYocto: 10n ** 23n,
         ...(evmChain && evmToken && evmTo
@@ -152,7 +154,7 @@ if (shopAccount) {
                 chainId: Number(evmChain),
                 token: evmToken,
                 to: evmTo,
-                min: 1_000n,
+                min: 25_000n,
                 max: 1_000_000n,
               },
             }
