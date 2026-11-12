@@ -6,7 +6,7 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 
 1. `make verify` (needs `cargo`; Node 22+ and pnpm 10 for part 2). The first run compiles for about
    5 to 7 minutes and prints progress while it does; allow 10 minutes. Expect 18 lines starting `ok`,
-   `test result: ok. 76 passed` for the contract, every TypeScript suite passing, then the
+   `test result: ok. 82 passed` for the contract, every TypeScript suite passing, then the
    recording of `make demo` ending `demo OK: 37/37 checks passed`.
 2. `make demo` (also needs cargo-near 0.22). The same story live on a local chain, about 2 minutes
    once built. CI runs it on every push (the `demo` job in `.github/workflows/ci.yml`).

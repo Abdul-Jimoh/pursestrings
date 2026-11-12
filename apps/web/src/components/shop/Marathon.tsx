@@ -86,7 +86,7 @@ export function Marathon() {
             <>
               {" "}
               The shop ran code <span className="mono text-[0.92em]">{s.code.slice(0, 8)}…</span>,
-              the version live now.
+              the version live that day; the build since only adds rules.
             </>
           ) : null}
         </p>

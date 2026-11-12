@@ -174,7 +174,7 @@ pie showData
     "Held for a council member, not paid" : 1
 ```
 
-- **Attack marathon:** 1,000 scripted attacks on testnet against the code that's live now, as a
+- **Attack marathon:** 1,000 scripted attacks on testnet against the code live on Nov 12, as a
   fooled agent with a real key, as an outsider and as the owner reaching for buyers' held NEAR:
   999 refused, each either a decision the contract logged or a failure with the reason expected
   for that attack. One was held for a council member instead: the account it tried to pay really

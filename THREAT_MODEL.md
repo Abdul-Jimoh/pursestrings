@@ -84,8 +84,8 @@ Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/test
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it
 enforced on the next spend. In a mixed batch, the removal applies now and the new recipient
 waits, and payments to the new recipient are denied until the timelock passes. Unit tests:
-[`a_proposal_left_a_week_past_due_expires`](contracts/pursestrings/src/admin.rs#L380),
-[`the_timelock_is_capped_at_thirty_days`](contracts/pursestrings/src/admin.rs#L454).
+[`a_proposal_left_a_week_past_due_expires`](contracts/pursestrings/src/admin.rs#L381),
+[`the_timelock_is_capped_at_thirty_days`](contracts/pursestrings/src/admin.rs#L460).
 
 ### 4. Budgets are deterministic, per-asset rolling windows
 
@@ -126,9 +126,9 @@ transaction. Each is one owner transaction.
 Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
 freezes the account, sees requests and approvals refused, sees that unfreezing is queued rather
 than applied, and checks that a revoked key is gone from the account and can't call
-`request_spend`. [`a_freeze_cancels_everything_queued`](contracts/pursestrings/src/admin.rs#L348)
+`request_spend`. [`a_freeze_cancels_everything_queued`](contracts/pursestrings/src/admin.rs#L349)
 queues an unfreeze, freezes, and fails to apply it;
-[`a_full_queue_still_freezes_in_one_transaction`](contracts/pursestrings/src/admin.rs#L395)
+[`a_full_queue_still_freezes_in_one_transaction`](contracts/pursestrings/src/admin.rs#L396)
 fills the queue and freezes.
 
 ### 7. Nobody can swap the code
