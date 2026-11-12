@@ -7,6 +7,7 @@ const NOW = 1_800_000_000_000;
 const facts = (f: Partial<Facts>): Facts => ({
   target: "alice.near",
   chain: "near",
+  network: "NEAR testnet",
   exists: true,
   isContract: false,
   txCount: 40,
@@ -64,7 +65,13 @@ describe("gather", () => {
           ? { result: { code_hash: "8RMeZ5cXDap6TENxaJKtigRYf3n139iHmTRe8ZUNey6N" } }
           : body.params?.request_type === "view_access_key_list"
             ? { result: { keys: [] } }
-            : { txs_count: 2, account_txs: [{ tx_block_timestamp: "1700000000000000000" }] };
+            : {
+                txs_count: 2,
+                account_txs: [
+                  { tx_block_timestamp: "1750000000000000000" },
+                  { tx_block_timestamp: "1700000000000000000" },
+                ],
+              };
       expect(url).toMatch(/rpc|tx/);
       return new Response(JSON.stringify(result));
     }) as typeof fetch;
@@ -78,6 +85,149 @@ describe("gather", () => {
     });
     expect(f).toMatchObject({ exists: true, isContract: true, fullAccessKeys: 0, txCount: 2 });
     expect(f.firstSeen).toBe(1_700_000_000_000);
+  });
+
+  describe("with mainnet sources", () => {
+    const net = (prefix: string) => ({
+      nearRpc: `https://${prefix}-rpc`,
+      nearTx: `https://${prefix}-tx`,
+      blockscout: `https://${prefix}-bs`,
+    });
+    // Accounts in `live` exist on the network whose URLs carry that prefix.
+    const sources = (live: Record<string, string[]>, seen: string[]) => ({
+      ...net("test"),
+      mainnet: { ...net("main"), evmRpc: "https://main-evm" },
+      known: KNOWN,
+      scamList: async () => [],
+      fetch: (async (url: string, init?: RequestInit) => {
+        seen.push(url);
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const prefix = url.slice(8, 12);
+        if (url === "https://main-evm") {
+          const has = (live.main ?? []).includes(body.params[0]);
+          const result = {
+            eth_getTransactionCount: has ? "0x5" : "0x0",
+            eth_getCode: "0x",
+            eth_getBalance: "0x0",
+          }[body.method as string];
+          return new Response(JSON.stringify({ result }));
+        }
+        const has = (live[prefix] ?? []).includes(body.params?.account_id ?? body.account_id);
+        if (body.params?.request_type === "view_account")
+          return new Response(
+            JSON.stringify(
+              has
+                ? { result: { code_hash: "11111111111111111111111111111111" } }
+                : { error: { cause: { name: "UNKNOWN_ACCOUNT" } } },
+            ),
+          );
+        if (body.params?.request_type === "view_access_key_list")
+          return new Response(JSON.stringify({ result: { keys: [] } }));
+        if (url.endsWith("/v0/account"))
+          return new Response(JSON.stringify({ txs_count: has ? 12 : 0, account_txs: [] }));
+        return new Response("{}", { status: 404 });
+      }) as typeof fetch,
+    });
+
+    it("finds a .near account on mainnet and says so", async () => {
+      const seen: string[] = [];
+      const f = await gather("ghost.near", sources({ main: ["ghost.near"] }, seen));
+      expect(f).toMatchObject({ exists: true, network: "NEAR mainnet", txCount: 12 });
+      expect(seen.some((u) => u.startsWith("https://test"))).toBe(false);
+    });
+
+    it("falls back to testnet when mainnet has never seen it", async () => {
+      const f = await gather("abc123.near", sources({ test: ["abc123.near"] }, []));
+      expect(f).toMatchObject({ exists: true, network: "NEAR testnet" });
+    });
+
+    it("never asks mainnet about a .testnet name", async () => {
+      const seen: string[] = [];
+      const f = await gather("bob.testnet", sources({ test: ["bob.testnet"] }, seen));
+      expect(f.network).toBe("NEAR testnet");
+      expect(seen.some((u) => u.startsWith("https://main"))).toBe(false);
+    });
+
+    it("names both networks when neither has it", async () => {
+      const f = await gather("nobody.near", sources({}, []));
+      expect(f.exists).toBe(false);
+      expect(verdict(f, 0).reasons).toContain(
+        "It has never been used on NEAR mainnet or NEAR testnet.",
+      );
+    });
+
+    it("counts only sent transactions on Base mainnet and says so", async () => {
+      const a = "0x00000000000000000000000000000000000000aa";
+      const f = await gather(a, sources({ main: [a] }, []));
+      expect(f).toMatchObject({ exists: true, chain: "base", network: "Base", txCount: 5 });
+      const g = await gather("0x00000000000000000000000000000000000000bb", {
+        ...sources({}, []),
+        fetch: (async (url: string, init?: RequestInit) => {
+          const body = JSON.parse((init?.body as string) ?? "{}");
+          const result =
+            url === "https://main-evm"
+              ? { eth_getTransactionCount: "0x1", eth_getCode: "0x", eth_getBalance: "0x0" }[
+                  body.method as string
+                ]
+              : undefined;
+          return new Response(JSON.stringify({ result }));
+        }) as typeof fetch,
+      });
+      expect(verdict(g, 0).reasons).toContain("It has sent only 1 transaction.");
+    });
+
+    it("doesn't take a busy account's latest page for its whole history", async () => {
+      const base = sources({}, []);
+      const f = await gather("busy.near", {
+        ...base,
+        fetch: (async (url: string, init?: RequestInit) => {
+          if (url.endsWith("/v0/account"))
+            return new Response(
+              JSON.stringify({
+                txs_count: 5000,
+                account_txs: [{ tx_block_timestamp: `${BigInt(NOW) * 1_000_000n}` }],
+              }),
+            );
+          if (url === "https://main-rpc")
+            return new Response(
+              JSON.stringify({
+                result: { code_hash: "11111111111111111111111111111111", keys: [] },
+              }),
+            );
+          return base.fetch(url, init);
+        }) as typeof fetch,
+      });
+      expect(f).toMatchObject({ exists: true, txCount: 5000, firstSeen: null });
+      expect(verdict(f, NOW).level).toBe("looks fine");
+    });
+
+    it("says it can't see a Base contract's history instead of counting its sends", () => {
+      const f = facts({
+        chain: "base",
+        network: "Base",
+        sentOnly: true,
+        isContract: true,
+        txCount: 1,
+        firstSeen: null,
+        fullAccessKeys: null,
+      });
+      expect(verdict(f, NOW)).toEqual({
+        level: "be careful",
+        reasons: ["It's a contract, and we can't see its history on Base."],
+      });
+    });
+
+    it("uses testnet when the mainnet lookup fails", async () => {
+      const base = sources({ test: ["carol.near"] }, []);
+      const f = await gather("carol.near", {
+        ...base,
+        fetch: (async (url: string, init?: RequestInit) => {
+          if (url.startsWith("https://main")) throw new Error("down");
+          return base.fetch(url, init);
+        }) as typeof fetch,
+      });
+      expect(f).toMatchObject({ exists: true, network: "NEAR testnet" });
+    });
   });
 
   it("tells chains apart", () => {

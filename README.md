@@ -119,7 +119,10 @@ hash, that the buyer can compare. Holding the payment protects a buyer from an a
 delivers, not from one that delivers something false.
 
 The agents' judgement is kept away from the money too. The checks' verdicts come from fixed
-rules and the model only writes the explanation ([check.ts](apps/shop/src/check.ts)). The bounty
+rules and the model only writes the explanation ([check.ts](apps/shop/src/check.ts)). The shop
+takes payment on testnet but looks the address up where people really pay it: NEAR mainnet and
+Base first, testnet only if mainnet has never seen it, and the report names the network
+([tests](apps/shop/src/check.test.ts)). The bounty
 agent's rules decide whether a report qualifies: the address must imitate a protected name, be
 flagged by the block explorer, or link a transaction that the agent looks up and finds the address
 signed or received. That shows the address was used, not that it scammed anyone, since anyone can

@@ -12,6 +12,7 @@ const KNOWN = ["circle.testnet"];
 const facts = (over: Partial<Facts> = {}): Facts => ({
   target: "x.testnet",
   chain: "near",
+  network: "NEAR testnet",
   exists: true,
   isContract: false,
   txCount: 1,

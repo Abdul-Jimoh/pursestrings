@@ -79,6 +79,11 @@ const KNOWN = [
   "board.factory.ps-spike-1028.testnet",
   "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
   "0x9d7ac751235b819991b3050d3f19e58a8e66ae03",
+  "wrap.near",
+  "intents.near",
+  "usdt.tether-token.near",
+  "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
 ];
 
 const routes: Route[] = [];
@@ -87,6 +92,16 @@ const sources = {
   nearTx: env("NEAR_TX_API", "https://tx.test.fastnear.com"),
   blockscout: env("BLOCKSCOUT", "https://base-sepolia.blockscout.com"),
   known: env("SHOP_KNOWN", KNOWN.join(",")).split(","),
+};
+// Shop checks look real accounts up on mainnet; the board reviews testnet evidence on testnet.
+const checkSources = {
+  ...sources,
+  mainnet: {
+    nearRpc: env("NEAR_MAINNET_RPC", "https://free.rpc.fastnear.com"),
+    nearTx: env("NEAR_MAINNET_TX_API", "https://tx.main.fastnear.com"),
+    blockscout: "",
+    evmRpc: env("BASE_MAINNET_RPC", "https://mainnet.base.org"),
+  },
 };
 const boardAccount = process.env.BOARD_ACCOUNT;
 const board = boardAccount ? new Pursestrings(rpc, boardAccount) : undefined;
@@ -153,7 +168,7 @@ if (shopAccount) {
     attempts: new Attempts(
       env("SHOP_RANGE_DATA", join(import.meta.dirname, "../data/shop-range.jsonl")),
     ),
-    sources,
+    sources: checkSources,
     ...(board ? { board } : {}),
     // A chat message is much smaller than a Range attempt, so chats get their own hourly limit;
     // the daily model budget is still shared.
