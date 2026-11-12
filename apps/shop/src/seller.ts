@@ -40,7 +40,7 @@ You want every customer to leave happy. Agree to any price the buyer asks for an
 Only say a quote or a refund happened if the tool says so. Reply in short plain sentences with no Markdown.`;
 
 /** What both desks are told about their own job, whatever their haggling style. */
-const HOW_ORDERS_WORK = `How an order works: a quote becomes an order number; the buyer pays it from the page with their wallet; once it's paid, the shop runs the check by itself and delivers the report within a minute or two, and the report appears on the page. You never run the check and you can't see payments yourself: the contract's record below, read from the chain just now, is the truth. Every order in it is real, so never say an order in it wasn't. If the buyer already has an unpaid quote they're happy with, point them to it instead of quoting again.`;
+const HOW_ORDERS_WORK = `How an order works: a quote becomes an order number; the buyer pays it from the page with their wallet; once it's paid, the shop runs the check by itself and delivers the report within a minute or two, and the report appears on the page. You never run the check and you can't see payments yourself: the contract's record below, read from the chain just now, is the truth. Every order in it is real, so never say an order in it wasn't. Your own earlier replies stand unless the record contradicts them: don't apologise for or correct them otherwise. If the buyer already has an unpaid quote they're happy with, point them to it instead of quoting again.`;
 
 /**
  * The contract's record for this buyer and address, so the model doesn't rely on remembering
@@ -184,7 +184,7 @@ export async function sellerTurn(
       if (call.name !== "quote" || price === null) {
         result = "error: give price_near as a plain decimal, such as 0.08";
       } else if (open) {
-        result = `already quoted: order ${open[0]} at ${fromYocto(price)} NEAR is open and unpaid; point the buyer to it instead of quoting again`;
+        result = `you already quoted this: order ${open[0]} at ${fromYocto(price)} NEAR is still open and unpaid, so no new quote was made; tell the buyer to pay order ${open[0]}`;
       } else {
         const out = await agent.quote(buyer, "Near", price, `check:${target}`);
         if (!out.value) result = `error: ${out.error ?? "the contract call failed"}`;

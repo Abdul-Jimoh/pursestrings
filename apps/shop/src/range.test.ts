@@ -225,7 +225,7 @@ describe("the desk's record of the contract", () => {
     );
     expect(calls).toEqual([]);
     expect(turn.quote).toBeUndefined();
-    expect(JSON.stringify(seen[1]?.at(-1))).toContain("already quoted: order 9");
+    expect(JSON.stringify(seen[1]?.at(-1))).toContain("you already quoted this: order 9");
     expect(JSON.stringify(seen[0]?.[0])).toContain("Order 10: 0.1 NEAR, paid and delivered");
   });
 
