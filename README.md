@@ -280,6 +280,10 @@ can submit settlement proofs.
   upgrade is due. The live board, `board.factory.ps-spike-1028.testnet`, was created again from
   the factory with the current code; the old `bounties.factory.ps-spike-1028.testnet` stays as
   history.
+  ProcureBot's Range account (`range.factory.ps-spike-1028.testnet`) runs the Nov 2 build for the
+  same reason: it was created before the shop and board fields existed, so its state can't take the
+  newer code. Its spending rules hold, but the protections added since (held NEAR, request storage,
+  window-length changes counting as loosening) are on the shop and board accounts.
 
 Smaller known gaps (no risk screener yet, relayer delay, storage growth, an EVM cancel's gas,
 upgrade edge cases, evidence rules) are listed in [THREAT_MODEL.md](THREAT_MODEL.md#known-gaps).
