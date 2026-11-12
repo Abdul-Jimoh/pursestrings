@@ -313,12 +313,16 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
     let apply_migration = |id: u64, code: Vec<u8>| apply_migration_as(owner.clone(), id, code);
 
     let migrate = json!({ "ops": [{ "Migrate": { "code_hash": s.hash.to_string() } }] });
+    let migrate = &migrate;
     let mixed = json!({ "ops": [{ "Migrate": { "code_hash": s.hash.to_string() } }, { "AddChain": { "chain_id": 1 } }] });
     assert!(
         refused(Ok(call("propose", mixed).await?)),
         "migration must be alone"
     );
-    let id: Option<u64> = call("propose", migrate).await?.assert_success().json()?;
+    let id: Option<u64> = call("propose", migrate.clone())
+        .await?
+        .assert_success()
+        .json()?;
     let id = id.expect("migration is a loosening");
     assert!(refused(Ok(
         call("apply_proposal", json!({ "id": id })).await?
@@ -352,8 +356,15 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
             s.code.clone()
         )
         .await?)),
-        "a freeze holds a due migration"
+        "a freeze cancels a due migration"
     );
+    let queued: Vec<Value> = Contract(alice.clone())
+        .call_function("proposals", ())
+        .read_only()
+        .fetch_from(&s.net)
+        .await?
+        .data;
+    assert!(queued.is_empty(), "a freeze cancels everything queued");
     let unfreeze: Option<u64> = call("propose", json!({ "ops": ["Unfreeze"] }))
         .await?
         .assert_success()
@@ -362,6 +373,12 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
     call("apply_proposal", json!({ "id": unfreeze.expect("queued") }))
         .await?
         .assert_success();
+    let id: Option<u64> = call("propose", migrate.clone())
+        .await?
+        .assert_success()
+        .json()?;
+    let id = id.expect("queued again");
+    s.advance(61).await?;
 
     let res = apply_migration_as(s.creator.clone(), id, s.code.clone())
         .await?
@@ -384,7 +401,10 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
         .fetch_from(&s.net)
         .await?
         .data;
-    assert_eq!(proposals.len(), 1, "only the rogue proposal is left");
+    assert!(
+        proposals.is_empty(),
+        "the freeze cancelled the rogue proposal too"
+    );
     let p: Value = Contract(alice.clone())
         .call_function("policy", ())
         .read_only()
@@ -392,5 +412,31 @@ async fn inv7_migration_is_timelocked_and_factory_checked() -> TestResult {
         .await?
         .data;
     assert_eq!(p["timelock_s"], 60, "state survives the migration");
+
+    // Once a newer build is published, the older one stays published but can't be moved back to.
+    let newer = CryptoHash::hash(&token_wasm());
+    s.call(
+        &s.admin.clone(),
+        "publish",
+        json!({ "code_hash": newer.to_string(), "version": "0.2.0" }),
+        1,
+    )
+    .await?
+    .assert_success();
+    let back: Option<u64> = call("propose", migrate.clone())
+        .await?
+        .assert_success()
+        .json()?;
+    s.advance(61).await?;
+    assert!(
+        refused(Ok(apply_migration_as(
+            s.creator.clone(),
+            back.expect("queued"),
+            s.code.clone()
+        )
+        .await?)),
+        "no downgrades: only the factory's newest release"
+    );
+    assert_eq!(s.code_of(&alice).await?, ContractState::LocalHash(s.hash));
     Ok(())
 }

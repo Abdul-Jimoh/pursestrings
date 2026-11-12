@@ -103,7 +103,7 @@ Screens from the live testnet site, captured on Nov 11.
 ## What the agents can't do
 
 The shop's agent has a function-call key limited to five methods
-([admin.rs:13](contracts/pursestrings/src/admin.rs#L13)). Each rule below is enforced in the
+([admin.rs:12](contracts/pursestrings/src/admin.rs#L12)). Each rule below is enforced in the
 contract and tested.
 
 | However it's talked into it, the agent can't… | Because | Test |
@@ -112,7 +112,7 @@ contract and tested.
 | Walk off with a buyer's payment | Payments are held until `deliver`; after the delivery window the buyer takes the payment back, even if the shop is frozen ([sales.rs:379](contracts/pursestrings/src/sales.rs#L379)). While frozen, the agent can't mark orders delivered ([sales.rs:348](contracts/pursestrings/src/sales.rs#L348)) | [`an_undelivered_payment_goes_back_to_the_buyer_even_when_frozen`](contracts/pursestrings/tests/shop.rs#L214) |
 | Spend what buyers paid | The owner's `withdraw`, an agent's NEAR spend, an approval and a refund after delivery all stop short of NEAR held for undelivered orders or unpaid shares, counted per order and per payee. The agent keys' gas allowances and, for a shop, its free quote slots' storage are set aside too, since the keys sign as the account ([sales.rs:80](contracts/pursestrings/src/sales.rs#L80)) | [`the_owner_cannot_withdraw_what_buyers_paid_until_it_is_delivered`](contracts/pursestrings/tests/shop.rs#L176), [`held_near_is_out_of_reach_until_delivery`](contracts/pursestrings/src/sales.rs#L827) |
 | Refund someone else, or refund a check into being free | Refunds go only to the payer: all of it before delivery, or at most the shop's kept share after ([sales.rs:604](contracts/pursestrings/src/sales.rs#L604)) | [`a_delivered_order_never_costs_less_than_the_floor_allows`](contracts/pursestrings/src/props.rs#L247) |
-| Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:365](contracts/pursestrings/src/policy.rs#L365)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L92) |
+| Redirect the revenue | Any split change is a loosening and waits out the timelock in public ([policy.rs:366](contracts/pursestrings/src/policy.rs#L366)) | [`a_sale_respects_the_floor_and_is_split_on_delivery`](contracts/pursestrings/tests/shop.rs#L92) |
 | Pay a bounty to anyone but its claimant, or more than its reward | [bounty.rs:234](contracts/pursestrings/src/bounty.rs#L234) | [`a_dao_owned_board_pays_by_earned_trust`](contracts/pursestrings/tests/board.rs#L75) |
 | Pay anyone else, or more than the budget | Allowlists, per-payment caps, rolling windows, velocity ([spend.rs](contracts/pursestrings/src/spend.rs#L334)) | [`no_admitted_spend_breaks_a_rule`](contracts/pursestrings/src/props.rs#L115) |
 
@@ -157,8 +157,9 @@ These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testne
 - **One open claim per account**, so nobody can sit on every bounty at once
   ([bounty.rs:105](contracts/pursestrings/src/bounty.rs#L105), [test](contracts/pursestrings/src/bounty.rs#L550)).
 - **Any council member can freeze the board at once**
-  ([admin.rs:87](contracts/pursestrings/src/admin.rs#L87)). Unfreezing, adding a council member
-  or raising a tier waits for a DAO vote and then the timelock
+  ([admin.rs:91](contracts/pursestrings/src/admin.rs#L91)), and the freeze cancels anything
+  already queued, so nobody can undo it with an unfreeze they queued earlier. Unfreezing, adding
+  a council member or raising a tier waits for a DAO vote and then the timelock
   ([`any_council_member_freezes_and_only_the_dao_loosens_after_the_timelock`](contracts/pursestrings/tests/board.rs#L144)).
 - **The DAO is the real mainnet Sputnik v3.2 code**, in the sandbox tests and on testnet.
 
@@ -204,7 +205,7 @@ contract.
 - **Through NEAR Intents:** direct transfers and withdrawals, and swaps signed as a `token_diff`
   the contract wrote ([intents.rs:128](contracts/pursestrings/src/intents.rs#L128)).
 
-One budget can span all three ([policy.rs:53](contracts/pursestrings/src/policy.rs#L53)).
+One budget can span all three ([policy.rs:54](contracts/pursestrings/src/policy.rs#L54)).
 
 ```mermaid
 sequenceDiagram
@@ -282,7 +283,9 @@ can submit settlement proofs.
   so it can keep buyers' payments apart. A token balance lives in the token's contract and can
   only be read asynchronously, so token payments are sent back until that's built safely.
 - **A stolen owner key** can't loosen anything quickly, but it can approve pending requests and
-  withdraw to the owner's own account (never NEAR held for buyers).
+  withdraw to the owner's own account (never NEAR held for buyers). It can't move the code back to
+  an older build either: a migration must be the factory's newest release
+  ([admin.rs:198](contracts/pursestrings/src/admin.rs#L198)).
 - **No USD budgets:** limits are in each asset's own units, with no price oracle.
 - **The first bounty board couldn't be upgraded.** Its DAO owner can't carry a 573 KB upgrade in
   one proposal, and its code predates the fix that lets anyone deliver code once the owner's

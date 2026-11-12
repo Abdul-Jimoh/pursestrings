@@ -1,8 +1,7 @@
 use near_sdk::json_types::{Base58CryptoHash, U128};
-use near_sdk::serde::Serialize;
+use near_sdk::serde::Deserialize;
 use near_sdk::{
-    Allowance, Gas, NearToken, Promise, PublicKey, assert_one_yocto, env, is_promise_success, near,
-    require,
+    Allowance, Gas, NearToken, Promise, PublicKey, assert_one_yocto, env, near, require,
 };
 
 use crate::events::Event;
@@ -11,11 +10,16 @@ use crate::types::Asset;
 use crate::{Agent, Proposal, Pursestrings, PursestringsExt, now_s};
 
 pub const AGENT_METHODS: &str = "request_spend,cancel_request,quote,deliver,refund";
-#[derive(Serialize)]
+/// The part of the factory's `releases` view a migration needs.
+#[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-struct CodeHashArgs {
+struct Release {
     code_hash: Base58CryptoHash,
 }
+
+/// A queued change that nobody applied within this long after it came due needs proposing again,
+/// so an old proposal can't be sprung long after everyone stopped watching it.
+pub const PROPOSAL_EXPIRES_S: u64 = 7 * 86_400;
 
 const FACTORY_CHECK_GAS: Gas = Gas::from_tgas(10);
 const MIGRATION_CALLBACK_GAS: Gas = Gas::from_tgas(150);
@@ -87,6 +91,7 @@ impl Pursestrings {
     pub fn freeze(&mut self) {
         self.assert_owner_or_council();
         self.apply_now(vec![PolicyOp::Freeze]);
+        self.cancel_queue();
     }
 
     /// Tightening ops apply now, in order. Loosening ops are queued behind the timelock and
@@ -116,6 +121,7 @@ impl Pursestrings {
                 Effect::Loosen => loosen.push(op),
             }
         }
+        let froze = tighten.iter().any(|op| matches!(op, PolicyOp::Freeze));
         if !tighten.is_empty() {
             self.policy.version += 1;
             Event::PolicyChanged {
@@ -123,6 +129,9 @@ impl Pursestrings {
                 ops: tighten,
             }
             .emit();
+        }
+        if froze {
+            self.cancel_queue();
         }
         if loosen.is_empty() {
             return None;
@@ -167,6 +176,10 @@ impl Pursestrings {
         let proposal = self.proposals.get(&id).expect("unknown proposal");
         require!(now_s() >= proposal.eta, "timelocked");
         require!(
+            now_s() <= proposal.eta + PROPOSAL_EXPIRES_S,
+            "proposal expired"
+        );
+        require!(
             !matches!(proposal.ops[..], [PolicyOp::Migrate { .. }]),
             "use apply_migration"
         );
@@ -191,6 +204,10 @@ impl Pursestrings {
         require!(!self.policy.frozen, "frozen");
         let proposal = self.proposals.get(&id).expect("unknown proposal");
         require!(now_s() >= proposal.eta, "timelocked");
+        require!(
+            now_s() <= proposal.eta + PROPOSAL_EXPIRES_S,
+            "proposal expired"
+        );
         let [PolicyOp::Migrate { code_hash }] = proposal.ops[..] else {
             env::panic_str("not a migration proposal")
         };
@@ -198,10 +215,12 @@ impl Pursestrings {
             env::sha256_array(&code) == near_sdk::CryptoHash::from(code_hash),
             "code does not match the proposed hash"
         );
+        // The newest release, not any published one: older builds stay published forever, and
+        // moving back to one could undo protections buyers paid under.
         Promise::new(self.factory.clone())
             .function_call(
-                "assert_published",
-                near_sdk::serde_json::to_vec(&CodeHashArgs { code_hash }).expect("args"),
+                "releases",
+                b"{}".to_vec(),
                 NearToken::from_yoctonear(0),
                 FACTORY_CHECK_GAS,
             )
@@ -220,9 +239,14 @@ impl Pursestrings {
         #[serializer(borsh)] code_hash: near_sdk::CryptoHash,
         #[serializer(borsh)] code: Vec<u8>,
     ) -> Promise {
+        // A release is about 150 bytes of JSON, so this allows hundreds of them.
+        let newest = env::promise_result_checked(0, 64 * 1024)
+            .ok()
+            .and_then(|bytes| near_sdk::serde_json::from_slice::<Vec<Release>>(&bytes).ok())
+            .and_then(|r| r.last().map(|x| near_sdk::CryptoHash::from(x.code_hash)));
         require!(
-            is_promise_success(),
-            "factory has not published this code hash"
+            newest == Some(code_hash),
+            "only the factory's newest release can be migrated to"
         );
         require!(
             self.proposals.remove(&id).is_some(),
@@ -245,6 +269,16 @@ impl Pursestrings {
 }
 
 impl Pursestrings {
+    /// A freeze cancels everything queued: whoever queued a loosening before it, a thief with
+    /// the owner's key included, has to propose again and wait out the timelock once unfrozen.
+    fn cancel_queue(&mut self) {
+        let ids: Vec<u64> = self.proposals.keys().copied().collect();
+        for id in ids {
+            self.proposals.remove(&id);
+            Event::ProposalCancelled { id }.emit();
+        }
+    }
+
     fn apply_now(&mut self, ops: Vec<PolicyOp>) {
         let mut next = self.policy.clone();
         for op in &ops {
@@ -258,5 +292,93 @@ impl Pursestrings {
             ops,
         }
         .emit();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::{NearToken, testing_env};
+
+    use super::*;
+    use crate::policy::MAX_TIMELOCK_S;
+    use crate::policy::tests::base_policy;
+    use crate::spend::tests::{contract, purse};
+
+    fn as_owner(now_s: u64) {
+        testing_env!(
+            VMContextBuilder::new()
+                .current_account_id(purse())
+                .predecessor_account_id("owner.near".parse().unwrap())
+                .attached_deposit(NearToken::from_yoctonear(1))
+                .block_timestamp(now_s * 1_000_000_000)
+                .build()
+        );
+    }
+
+    fn refused(f: impl FnOnce()) -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err()
+    }
+
+    #[test]
+    fn a_freeze_cancels_everything_queued() {
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        let unfreeze = c.propose(vec![PolicyOp::Unfreeze]).expect("queued");
+        let more = c
+            .propose(vec![PolicyOp::AddChain { chain_id: 1 }])
+            .expect("queued");
+        c.freeze();
+        assert!(c.policy.frozen);
+        assert!(c.proposals().is_empty());
+        as_owner(1_000 + u64::from(c.policy.timelock_s) + 1);
+        assert!(
+            refused(|| c.apply_proposal(unfreeze)),
+            "queued before the freeze"
+        );
+        assert!(refused(|| c.apply_proposal(more)));
+        assert!(c.policy.frozen, "still frozen");
+
+        // Freezing through `propose` cancels the queue too, but keeps what that call queues.
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        c.propose(vec![PolicyOp::AddChain { chain_id: 1 }]);
+        let after = c
+            .propose(vec![PolicyOp::Freeze, PolicyOp::Unfreeze])
+            .expect("queued");
+        assert_eq!(
+            c.proposals().iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            vec![after]
+        );
+    }
+
+    #[test]
+    fn a_proposal_left_a_week_past_due_expires() {
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        let id = c
+            .propose(vec![PolicyOp::AddChain { chain_id: 1 }])
+            .expect("queued");
+        let eta = 1_000 + u64::from(c.policy.timelock_s);
+        as_owner(eta + PROPOSAL_EXPIRES_S + 1);
+        assert!(refused(|| c.apply_proposal(id)));
+        as_owner(eta + PROPOSAL_EXPIRES_S);
+        c.apply_proposal(id);
+        assert!(c.policy.chains.contains(&1));
+    }
+
+    #[test]
+    fn the_timelock_is_capped_at_thirty_days() {
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        assert!(refused(|| {
+            c.propose(vec![PolicyOp::SetTimelock {
+                seconds: MAX_TIMELOCK_S + 1,
+            }]);
+        }));
+        c.propose(vec![PolicyOp::SetTimelock {
+            seconds: MAX_TIMELOCK_S,
+        }]);
+        assert_eq!(c.policy.timelock_s, MAX_TIMELOCK_S);
     }
 }

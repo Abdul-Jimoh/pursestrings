@@ -9,6 +9,7 @@ pub const MAX_WINDOWS_PER_ASSET: usize = 4;
 pub const MAX_RECIPIENTS: usize = 64;
 pub const MAX_CHAINS: usize = 16;
 pub const MAX_MIN_RATES: usize = 16;
+pub const MAX_TIMELOCK_S: u32 = 30 * 86_400;
 pub const MAX_OPS_PER_PROPOSAL: usize = 32;
 pub const MAX_GROUPS: usize = 8;
 pub const MAX_GROUP_NAME_BYTES: usize = 32;
@@ -644,6 +645,12 @@ impl Policy {
             require!(v.max > 0 && period_ok(v.period_s), "bad velocity");
         }
         require!(self.pending_ttl_s > 0, "pending ttl must be positive");
+        // Raising the timelock is tightening, so it applies at once; without a ceiling a typo or
+        // a thief could set one that outlives everyone, and with a freeze lock the account for good.
+        require!(
+            self.timelock_s <= MAX_TIMELOCK_S,
+            "timelock at most 30 days"
+        );
         require!(self.delivery_s > 0, "delivery window must be positive");
         let near_side = |a: &Asset| matches!(a, Asset::Near | Asset::Nep141 { .. });
         require!(

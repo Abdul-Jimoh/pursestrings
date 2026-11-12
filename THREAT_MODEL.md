@@ -25,7 +25,7 @@ version, deploy the real contracts and drive them through signed transactions.
 
 `add_agent` creates a function-call key whose receiver is the account itself and whose methods are
 only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
-([admin.rs:32](contracts/pursestrings/src/admin.rs#L32)). NEAR's protocol rejects any other use
+([admin.rs:36](contracts/pursestrings/src/admin.rs#L36)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
 ([lib.rs:318](contracts/pursestrings/src/lib.rs#L318)). The one selling method that pays anything out, `refund`, can only
@@ -69,21 +69,29 @@ Tests:
 ### 3. Loosening is time-locked; tightening, revoking and freezing are instant
 
 `propose` splits a batch with `classify`
-([policy.rs:344](contracts/pursestrings/src/policy.rs#L344)): an op that isn't provably at least
+([policy.rs:345](contracts/pursestrings/src/policy.rs#L345)): an op that isn't provably at least
 as strict as the current policy goes into the queue with an `eta`; the rest apply at once
-([admin.rs:96](contracts/pursestrings/src/admin.rs#L96)). Unfreezing and adding recipients count
+([admin.rs:101](contracts/pursestrings/src/admin.rs#L101)). A queued change that nobody applies
+within seven days of its `eta` expires, so an old proposal can't be sprung after everyone stopped
+watching it ([admin.rs:22](contracts/pursestrings/src/admin.rs#L22)). Raising the timelock is
+tightening and applies at once, so it's capped at 30 days: a typo or a thief can't set one that
+outlives everyone ([policy.rs:651](contracts/pursestrings/src/policy.rs#L651)). Unfreezing and adding recipients count
 as loosening. So does any change to a window's length: usage is kept per length, and a new
 length would start from zero
-([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L904)).
+([`a_new_window_length_is_a_loosening`](contracts/pursestrings/src/policy.rs#L911)).
 
 Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/tests/invariants.rs#L170)
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it
 enforced on the next spend. In a mixed batch, the removal applies now and the new recipient
-waits, and payments to the new recipient are denied until the timelock passes.
+waits, and payments to the new recipient are denied until the timelock passes. Unit tests:
+[`a_proposal_left_a_week_past_due_expires`](contracts/pursestrings/src/admin.rs#L356),
+[`the_timelock_is_capped_at_thirty_days`](contracts/pursestrings/src/admin.rs#L371).
 
 ### 4. Budgets are deterministic, per-asset rolling windows
 
-Each window is a ring of time buckets ([ring.rs:9](contracts/pursestrings/src/ring.rs#L9)). An
+Each window is a ring of 24 time buckets ([ring.rs:9](contracts/pursestrings/src/ring.rs#L9)),
+so it's accurate to one bucket: a spend at the very end of a bucket drops out of a daily window
+23 hours and one second later, not 24 (see Known gaps). An
 approval reserves its amount, a failed execution releases it, and a signed EVM transaction keeps
 its reservation until it's proven settled or replaced. There's no price oracle: amounts are in
 each asset's own units, and a budget group joins assets the owner declares to be the same unit.
@@ -105,15 +113,19 @@ screener's say-so.
 
 ### 6. Kill switch
 
-`freeze` ([admin.rs:87](contracts/pursestrings/src/admin.rs#L87)) makes every request fail with
-`Frozen` and blocks approving pending ones. `revoke_agent`
-([admin.rs:57](contracts/pursestrings/src/admin.rs#L57)) deletes the key in the same
+`freeze` ([admin.rs:91](contracts/pursestrings/src/admin.rs#L91)) makes every request fail with
+`Frozen`, blocks approving pending ones, and cancels every queued change
+([admin.rs:274](contracts/pursestrings/src/admin.rs#L274)): an unfreeze or a loosening queued
+before the freeze, by a thief with the owner's key or anyone else, can't apply after it; the owner
+proposes again and waits out the timelock once unfrozen. `revoke_agent`
+([admin.rs:61](contracts/pursestrings/src/admin.rs#L61)) deletes the key in the same
 transaction. Each is one owner transaction.
 
 Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
 freezes the account, sees requests and approvals refused, sees that unfreezing is queued rather
 than applied, and checks that a revoked key is gone from the account and can't call
-`request_spend`.
+`request_spend`. [`a_freeze_cancels_everything_queued`](contracts/pursestrings/src/admin.rs#L324)
+queues an unfreeze, freezes, and fails to apply it.
 
 ### 7. Nobody can swap the code
 
@@ -121,11 +133,12 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:185](contracts/pursestrings/src/admin.rs#L185)) checks with the factory that the hash
-was published before deploying it. Once the proposal is due, anyone can deliver code matching the
+([admin.rs:198](contracts/pursestrings/src/admin.rs#L198)) deploys it only if it's the factory's
+newest release. Older builds stay published, but moving back to one could undo protections that
+buyers paid under, such as NEAR held out of the owner's reach, so it's refused. Once the proposal is due, anyone can deliver code matching the
 hash, so a DAO owner never has to store the wasm in a proposal of its own. That makes a due
 migration final unless the owner cancels it before the timelock ends, or the account is frozen:
-`apply_migration` refuses while frozen, and any council member can freeze. The factory's own keys
+a freeze cancels it, and any council member can freeze. The factory's own keys
 are deleted after init, and its admin can only append hashes.
 
 Tests:
@@ -155,6 +168,18 @@ Tests:
 ## Known gaps
 
 - **No risk screener** (invariant 5): a risk threshold sends the request to the owner instead.
+- **A window is accurate to one bucket.** With 24 buckets, a spend at the end of a bucket is
+  forgotten one bucket early, so in the worst case a daily limit can be spent twice within 23
+  hours and one second. Making it conservative changes how stored windows are laid out, which we
+  didn't want to migrate on live accounts this close to submission.
+- **Accounts on builds before `newest release only` can still downgrade.** The rule lives in the
+  account's own code, so it protects an account from the migration that installs it onward. The
+  testnet Range account runs the Nov 2 build and can't migrate (README, Limitations).
+- **The live demo's shared budgets.** The model budget, the agent key's gas and the shop's 64
+  quote slots are shared. Each account gets a daily share of the model budget, two open quotes
+  and 20 contract calls a day from chat (300 in all), and quotes last ten minutes, so it takes
+  many accounts to exhaust them, but enough free testnet accounts still could, until midnight UTC
+  or the quotes expire. The status endpoint shows the agent key's remaining gas.
 - **The relayer can delay** an EVM payment but can't change it. A signed transaction keeps its
   budget reserved until it's proven settled or replaced.
 - **An EVM cancel's own gas isn't counted.** Once a same-nonce cancel is proven, the original's
