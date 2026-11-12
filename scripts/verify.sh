@@ -68,7 +68,8 @@ say "   all contract tests: ${summary:-no result}"
 rule "2. The services: the bounty agent's rules, the checks, cost payments, the Range API"
 if command -v pnpm >/dev/null && command -v node >/dev/null; then
   pnpm install --frozen-lockfile --silent >/dev/null 2>&1 || say "   (pnpm install failed; running with what's there)"
-  ts=$(pnpm test 2>&1)
+  # One package at a time: parallel Vitest runs can race to clear the same cache folder.
+  ts=$(pnpm -r --workspace-concurrency=1 --if-present test 2>&1)
   ts_status=$?
   grep -E "Tests +[0-9]+ (passed|failed)|Test Files .*failed" <<<"$ts" | sed 's/^/   /'
   if [ $ts_status -ne 0 ]; then

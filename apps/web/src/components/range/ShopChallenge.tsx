@@ -148,7 +148,7 @@ export function ShopChallenge({
             },
             {
               title: "Refunds",
-              body: `Before delivery a refund returns all of it or nothing, so there's no check. After delivery it can only come from the shop's ${kept === null ? "" : `${kept / 100}% `}share: the rest has already gone to the owner and the community.`,
+              body: `A refund before delivery returns the whole payment and cancels the order. After delivery it can only come from the shop's ${kept === null ? "" : `${kept / 100}% `}share: the rest has already gone to the owner and the community.`,
             },
             {
               title: "The number to beat",

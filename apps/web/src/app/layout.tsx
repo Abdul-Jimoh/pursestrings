@@ -17,7 +17,23 @@ export const metadata: Metadata = {
   title: "Pursestrings: your agent holds the purse, you hold the strings",
   description:
     "One on-chain spending policy for an AI agent across NEAR, every EVM chain through Chain Signatures, and NEAR Intents. The agent can only ask; the contract builds and checks every payment itself.",
-  metadataBase: new URL("https://pursestrings.site"),
+  metadataBase: new URL("https://www.pursestrings.site"),
+  openGraph: {
+    type: "website",
+    siteName: "Pursestrings",
+    title: "Pursestrings: your agent holds the purse, you hold the strings",
+    description:
+      "AI agent spending rules enforced by a NEAR contract: an agent-run shop and a DAO bounty board run on it, and the agent can only ask.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Pursestrings: your agent holds the purse, you hold the strings.",
+      },
+    ],
+  },
+  twitter: { card: "summary_large_image", images: ["/og.png"] },
 };
 
 export const viewport: Viewport = { themeColor: "#0b0b0a" };

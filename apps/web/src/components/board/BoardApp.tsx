@@ -163,9 +163,10 @@ export function BoardApp() {
           Grow the list. <span className="text-string">Earn the trust.</span>
         </h1>
         <p className="board-fade reveal mt-10 max-w-2xl text-[1.1rem] leading-relaxed text-paper/75 md:text-[1.25rem]">
-          Report an address that imitates a real one. An AI agent checks your report against fixed
-          rules and asks the contract to pay you. Your first payout needs one council member; every
-          paid bounty earns you a point, and points unlock payouts nobody has to approve. The purse
+          Report a scam address: a lookalike of a real one, one the block explorer flags, or one a
+          transaction you link shows at work. An AI agent checks your report against fixed rules and
+          asks the contract to pay you. Your first payout needs one council member; every bounty
+          paid in full earns you a point, and points unlock payouts nobody has to approve. The purse
           belongs to the community DAO and is funded by a share of every sale in{" "}
           <Link
             href="/shop"
@@ -252,7 +253,7 @@ export function BoardApp() {
                     <span className="text-[1rem] font-semibold text-dim-ink">{done.length}</span>
                   </h3>
                   <p className="mt-2 text-paper/60">
-                    Newest first. Each paid bounty earned its claimant one point.
+                    Newest first. A bounty paid in full earns its claimant one point.
                   </p>
                   <ChatLog
                     count={done.length}
@@ -270,7 +271,7 @@ export function BoardApp() {
 
       <Block
         label="How trust works"
-        intro="Read live from testnet. Points come only from paid bounties, so trust is earned on-chain, one payout at a time."
+        intro="Read live from testnet. Points come only from bounties paid in full, so trust is earned on-chain, one payout at a time."
       >
         {tiers.length > 0 ? (
           <div className="border-t border-paper/15">
@@ -313,7 +314,7 @@ export function BoardApp() {
 
       <Block
         label="Contributors"
-        intro="Every point traces to a paid bounty."
+        intro="Every point traces to a bounty paid in full."
         className="border-t border-paper/15"
       >
         {board && board.contributors.length === 0 && (

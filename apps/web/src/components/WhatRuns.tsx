@@ -19,7 +19,7 @@ const businesses = [
   {
     eyebrow: "The bounty board",
     title: "Grow the list. Earn the trust.",
-    body: "A Sputnik DAO owns a purse that pays people who report scam addresses. An agent reviews each report against fixed rules. A newcomer's payout needs one council member; paid reports earn points, points unlock payouts nobody has to approve, and big payouts go to a DAO vote. Every paid report joins the scam list the shop checks.",
+    body: "A Sputnik DAO owns a purse that pays people who report scam addresses. An agent reviews each report against fixed rules. A newcomer’s payout needs one council member; each report paid in full earns a point, points unlock payouts nobody has to approve, and big payouts go to a DAO vote. Every paid report joins the scam list the shop checks.",
     links: [{ href: "/bounties", label: "See the bounties" }],
   },
 ];

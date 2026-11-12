@@ -116,7 +116,7 @@ export function HowItHolds() {
           <span className="text-string">The contract decides.</span>
         </h2>
 
-        <div className="mt-12 hidden flex-1 grid-cols-[minmax(0,22rem)_1fr] items-center gap-10 md:grid">
+        <div className="mt-12 hidden flex-1 grid-cols-[minmax(0,22rem)_1fr] items-center gap-10 md:grid md:motion-reduce:hidden">
           <div className="relative h-56">
             {outcomes.map((o) => (
               <div key={o.id} className={`panel-${o.id} invisible absolute inset-0`}>
@@ -236,7 +236,8 @@ export function HowItHolds() {
           </svg>
         </div>
 
-        <div className="mt-12 flex flex-col gap-5 md:hidden">
+        {/* Also the desktop layout when motion is reduced: the diagram above only plays as an animation. */}
+        <div className="mt-12 flex flex-col gap-5 md:hidden md:motion-reduce:grid md:motion-reduce:grid-cols-3">
           {outcomes.map((o) => (
             <article
               key={o.id}

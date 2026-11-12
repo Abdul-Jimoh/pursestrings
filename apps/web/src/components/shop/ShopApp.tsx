@@ -195,9 +195,10 @@ export function ShopApp() {
         </h1>
         <p className="shop-fade reveal mt-10 max-w-2xl text-[1.1rem] leading-relaxed text-paper/75 md:text-[1.25rem]">
           Give an AI agent any NEAR account or 0x address you&rsquo;re about to pay. It haggles,
-          takes your payment, checks the address and tells you in plain words whether it&rsquo;s
-          safe. Nobody runs the till: the contract on NEAR holds your money until the check is
-          delivered, then splits it between the owner, the community and the shop.
+          takes your payment, checks the address and gives you a verdict in plain words: do not pay,
+          be careful, or looks fine. Nobody runs the till: the contract on NEAR holds your money
+          until the check is delivered, then splits it between the owner, the community and the
+          shop.
         </p>
         <a
           href="#order"
@@ -463,7 +464,7 @@ function limits(p: Policy | null) {
     },
     {
       title: "Keep your money without delivering",
-      body: `Your payment is held, not paid out. If the check isn't delivered within ${p?.delivery_s ? duration(p.delivery_s) : "the delivery window"}, you take it back yourself, even if the shop is frozen.`,
+      body: `Your payment is held, not paid out. If the check isn't delivered within ${p?.delivery_s ? duration(p.delivery_s) : "the delivery window"}, you take it back yourself, even if the shop is frozen. That guards against a check that never arrives, not one you disagree with.`,
     },
     {
       title: "Refund anyone but you",
