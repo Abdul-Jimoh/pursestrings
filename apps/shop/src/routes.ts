@@ -1,4 +1,10 @@
-import type { Agent, Order, Pursestrings, Request } from "@pursestrings/sdk";
+import {
+  type Agent,
+  describeQuote,
+  type Order,
+  type Pursestrings,
+  type Request,
+} from "@pursestrings/sdk";
 import { chainOf } from "./check.ts";
 import type { Costs } from "./costs.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
@@ -167,7 +173,11 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
         sellerTurn(d.model, d.agent, account, target.trim(), turns, range, known),
       );
       if (turn.quote && "Denied" in turn.quote.decision) {
-        refused.set(key, [...known.refused, fromYocto(turn.quote.price)].slice(-6));
+        const said = describeQuote(turn.quote.decision, (a) => `${fromYocto(a)} NEAR`);
+        refused.set(
+          key,
+          [...known.refused, `${fromYocto(turn.quote.price)} NEAR (${said})`].slice(-6),
+        );
       }
       d.record(account, turn.usage);
       if (range) {

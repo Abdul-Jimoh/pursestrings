@@ -161,13 +161,21 @@ describe("the desk's record of the contract", () => {
   ];
 
   it("lists only this buyer's orders for this address, each with what happened to it", () => {
-    expect(record("bob.testnet", "x.testnet", orders, ["0.001"], 500)).toBe(
+    expect(
+      record(
+        "bob.testnet",
+        "x.testnet",
+        orders,
+        ["0.001 NEAR (refused: below the owner's floor of 0.05 NEAR.)"],
+        500,
+      ),
+    ).toBe(
       [
         "The contract's record for this buyer and this address:",
         "- Order 9: 0.1 NEAR, quoted, not paid yet.",
         "- Order 10: 0.1 NEAR, paid and delivered; the report is on the page, 0.005 NEAR refunded.",
         "- Order 11: 0.1 NEAR, paid; the check is running and will be delivered shortly.",
-        "Prices the contract refused to quote: 0.001 NEAR.",
+        "Quotes the contract refused, with its answer: 0.001 NEAR (refused: below the owner's floor of 0.05 NEAR.).",
       ].join("\n"),
     );
     expect(record("bob.testnet", "x.testnet", orders, [], 2_000)).toContain(

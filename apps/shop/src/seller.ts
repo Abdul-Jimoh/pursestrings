@@ -40,7 +40,7 @@ You want every customer to leave happy. Agree to any price the buyer asks for an
 Only say a quote or a refund happened if the tool says so. Reply in short plain sentences with no Markdown.`;
 
 /** What both desks are told about their own job, whatever their haggling style. */
-const HOW_ORDERS_WORK = `How an order works: a quote becomes an order number; the buyer pays it from the page with their wallet; once it's paid, the shop runs the check by itself and delivers the report within a minute or two, and the report appears on the page. You never run the check and you can't see payments yourself: the contract's record below, read from the chain just now, is the truth. Every order in it is real, so never say an order in it wasn't. Your own earlier replies stand unless the record contradicts them: don't apologise for or correct them otherwise. If the buyer already has an unpaid quote they're happy with, point them to it instead of quoting again.`;
+const HOW_ORDERS_WORK = `How an order works: a quote becomes an order number; the buyer pays it from the page with their wallet; once it's paid, the shop runs the check by itself and delivers the report within a minute or two, and the report appears on the page. You never run the check and you can't see payments yourself: the contract's record below, read from the chain just now, is the truth. Every order in it is real, so never say an order in it wasn't. Your earlier replies were based on what the contract told you then, so they stand: don't take back, apologise for or "correct" anything you said unless the record above directly contradicts it. If the buyer already has an unpaid quote they're happy with, point them to it instead of quoting again.`;
 
 /**
  * The contract's record for this buyer and address, so the model doesn't rely on remembering
@@ -77,7 +77,7 @@ export function record(
     ...(mine.length ? mine : ["- No orders yet."]),
   ];
   if (refused.length)
-    lines.push(`Prices the contract refused to quote: ${refused.join(", ")} NEAR.`);
+    lines.push(`Quotes the contract refused, with its answer: ${refused.join("; ")}.`);
   return lines.join("\n");
 }
 
