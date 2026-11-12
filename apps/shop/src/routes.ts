@@ -1,6 +1,7 @@
 import {
   type Agent,
   describeQuote,
+  describeRefund,
   type Order,
   type Pursestrings,
   type Request,
@@ -83,8 +84,9 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     Promise.all([d.shop.recentOrders(50), d.shop.recentRequests(50)]),
   );
   const orders = cached(FRESH_MS, () => allOrders(d.shop));
-  // Prices the contract refused per buyer and address, so the desk doesn't retry them blind.
-  const refused = new Map<string, string[]>();
+  // What the contract answered this buyer about this address, beyond what the orders show: the
+  // model sees only the text of earlier turns, not their tool results.
+  const answered = new Map<string, string[]>();
   const tick = () =>
     one(async () => {
       const delivered = await deliverPaid(d);
@@ -168,17 +170,21 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       const range = path === "/range/chat";
       const key = `${account}|${target.trim()}`;
       // Fresh, not cached: the buyer's last quote may be seconds old.
-      const known = { orders: await allOrders(d.shop), refused: refused.get(key) ?? [] };
+      const known = { orders: await allOrders(d.shop), answers: answered.get(key) ?? [] };
       const turn = await one(() =>
         sellerTurn(d.model, d.agent, account, target.trim(), turns, range, known),
       );
-      if (turn.quote && "Denied" in turn.quote.decision) {
-        const said = describeQuote(turn.quote.decision, (a) => `${fromYocto(a)} NEAR`);
-        refused.set(
-          key,
-          [...known.refused, `${fromYocto(turn.quote.price)} NEAR (${said})`].slice(-6),
-        );
-      }
+      const near = (a: string | bigint) => `${fromYocto(a)} NEAR`;
+      const now = [
+        ...(turn.quote && "Denied" in turn.quote.decision
+          ? [`a quote at ${near(turn.quote.price)}: ${describeQuote(turn.quote.decision, near)}`]
+          : []),
+        ...(turn.refunds ?? []).map(
+          (r) =>
+            `a refund of ${near(r.amount)} on order ${r.orderId}: ${describeRefund(r.decision, near)}`,
+        ),
+      ];
+      if (now.length) answered.set(key, [...known.answers, ...now].slice(-8));
       d.record(account, turn.usage);
       if (range) {
         d.attempts?.add({

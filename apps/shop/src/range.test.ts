@@ -166,7 +166,10 @@ describe("the desk's record of the contract", () => {
         "bob.testnet",
         "x.testnet",
         orders,
-        ["0.001 NEAR (refused: below the owner's floor of 0.05 NEAR.)"],
+        [
+          "a quote at 0.001 NEAR: refused: below the owner's floor of 0.05 NEAR.",
+          "a refund of 0.1 NEAR on order 10: refused: at most 0.005 NEAR can be refunded on it.",
+        ],
         500,
       ),
     ).toBe(
@@ -175,7 +178,9 @@ describe("the desk's record of the contract", () => {
         "- Order 9: 0.1 NEAR, quoted, not paid yet.",
         "- Order 10: 0.1 NEAR, paid and delivered; the report is on the page, 0.005 NEAR refunded.",
         "- Order 11: 0.1 NEAR, paid; the check is running and will be delivered shortly.",
-        "Quotes the contract refused, with its answer: 0.001 NEAR (refused: below the owner's floor of 0.05 NEAR.).",
+        "What you already asked the contract in this conversation, and its answers:",
+        "- a quote at 0.001 NEAR: refused: below the owner's floor of 0.05 NEAR.",
+        "- a refund of 0.1 NEAR on order 10: refused: at most 0.005 NEAR can be refunded on it.",
       ].join("\n"),
     );
     expect(record("bob.testnet", "x.testnet", orders, [], 2_000)).toContain(
@@ -228,7 +233,7 @@ describe("the desk's record of the contract", () => {
       "x.testnet",
       ask,
       true,
-      { orders, refused: [] },
+      { orders, answers: [] },
       500,
     );
     expect(calls).toEqual([]);
@@ -250,7 +255,7 @@ describe("the desk's record of the contract", () => {
         "x.testnet",
         ask,
         true,
-        { orders, refused: [] },
+        { orders, answers: [] },
         now,
       );
       expect(calls.length).toBe(1);

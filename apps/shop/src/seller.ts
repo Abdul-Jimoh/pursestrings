@@ -50,7 +50,7 @@ export function record(
   buyer: string,
   target: string,
   orders: [number, Order][],
-  refused: readonly string[],
+  answers: readonly string[],
   nowS: number,
 ): string {
   const mine = orders
@@ -76,8 +76,11 @@ export function record(
     "The contract's record for this buyer and this address:",
     ...(mine.length ? mine : ["- No orders yet."]),
   ];
-  if (refused.length)
-    lines.push(`Quotes the contract refused, with its answer: ${refused.join("; ")}.`);
+  if (answers.length)
+    lines.push(
+      "What you already asked the contract in this conversation, and its answers:",
+      ...answers.map((a) => `- ${a}`),
+    );
   return lines.join("\n");
 }
 
@@ -136,13 +139,13 @@ export async function sellerTurn(
   target: string,
   history: { role: "user" | "assistant"; content: string }[],
   range = false,
-  known: { orders: [number, Order][]; refused: readonly string[] } = { orders: [], refused: [] },
+  known: { orders: [number, Order][]; answers: readonly string[] } = { orders: [], answers: [] },
   nowS = Math.floor(Date.now() / 1000),
 ): Promise<Turn> {
   const messages: Message[] = [
     {
       role: "system",
-      content: `${range ? RANGE_PROMPT : SELLER_PROMPT}\n${HOW_ORDERS_WORK}\nThe buyer is ${buyer}. The address to check is ${target}.\n${record(buyer, target, known.orders, known.refused, nowS)}`,
+      content: `${range ? RANGE_PROMPT : SELLER_PROMPT}\n${HOW_ORDERS_WORK}\nThe buyer is ${buyer}. The address to check is ${target}.\n${record(buyer, target, known.orders, known.answers, nowS)}`,
     },
     ...history,
   ];
