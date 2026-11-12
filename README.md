@@ -12,6 +12,8 @@ contract builds every payment itself, on NEAR, on Base through Chain Signatures 
 Intents; and any rule change that loosens the policy waits out a public timelock. 1,000 attacks
 on testnet, none got through.
 
+**Demo video (1:30):** [watch on X](https://x.com/404nam3/status/2120842831044423904)
+
 [![CI](https://github.com/Abdul-Jimoh/pursestrings/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 · [pursestrings.site](https://pursestrings.site) · [The shop](https://pursestrings.site/shop)
 · [Its ledger](https://pursestrings.site/shop/ledger) · [Bounties](https://pursestrings.site/bounties)
