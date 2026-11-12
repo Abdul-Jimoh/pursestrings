@@ -25,7 +25,7 @@ version, deploy the real contracts and drive them through signed transactions.
 
 `add_agent` creates a function-call key whose receiver is the account itself and whose methods are
 only `request_spend`, `cancel_request`, `quote`, `deliver` and `refund`
-([admin.rs:36](contracts/pursestrings/src/admin.rs#L36)). NEAR's protocol rejects any other use
+([admin.rs:41](contracts/pursestrings/src/admin.rs#L41)). NEAR's protocol rejects any other use
 of the key, including transfers. Owner methods call `assert_owner`, which needs exactly 1
 yoctoNEAR attached, and a function-call key can't attach a deposit
 ([lib.rs:318](contracts/pursestrings/src/lib.rs#L318)). The one selling method that pays anything out, `refund`, can only
@@ -71,7 +71,7 @@ Tests:
 `propose` splits a batch with `classify`
 ([policy.rs:345](contracts/pursestrings/src/policy.rs#L345)): an op that isn't provably at least
 as strict as the current policy goes into the queue with an `eta`; the rest apply at once
-([admin.rs:101](contracts/pursestrings/src/admin.rs#L101)). A queued change that nobody applies
+([admin.rs:106](contracts/pursestrings/src/admin.rs#L106)). A queued change that nobody applies
 within seven days of its `eta` expires, so an old proposal can't be sprung after everyone stopped
 watching it ([admin.rs:22](contracts/pursestrings/src/admin.rs#L22)). Raising the timelock is
 tightening and applies at once, so it's capped at 30 days: a typo or a thief can't set one that
@@ -84,8 +84,8 @@ Test: [`inv3_loosening_waits_tightening_is_instant`](contracts/pursestrings/test
 queues a limit raise, fails to apply it early, and cancels it. It lowers a cap and sees it
 enforced on the next spend. In a mixed batch, the removal applies now and the new recipient
 waits, and payments to the new recipient are denied until the timelock passes. Unit tests:
-[`a_proposal_left_a_week_past_due_expires`](contracts/pursestrings/src/admin.rs#L356),
-[`the_timelock_is_capped_at_thirty_days`](contracts/pursestrings/src/admin.rs#L371).
+[`a_proposal_left_a_week_past_due_expires`](contracts/pursestrings/src/admin.rs#L380),
+[`the_timelock_is_capped_at_thirty_days`](contracts/pursestrings/src/admin.rs#L454).
 
 ### 4. Budgets are deterministic, per-asset rolling windows
 
@@ -113,19 +113,23 @@ screener's say-so.
 
 ### 6. Kill switch
 
-`freeze` ([admin.rs:91](contracts/pursestrings/src/admin.rs#L91)) makes every request fail with
+`freeze` ([admin.rs:96](contracts/pursestrings/src/admin.rs#L96)) makes every request fail with
 `Frozen`, blocks approving pending ones, and cancels every queued change
-([admin.rs:274](contracts/pursestrings/src/admin.rs#L274)): an unfreeze or a loosening queued
+([admin.rs:295](contracts/pursestrings/src/admin.rs#L295)): an unfreeze or a loosening queued
 before the freeze, by a thief with the owner's key or anyone else, can't apply after it; the owner
-proposes again and waits out the timelock once unfrozen. `revoke_agent`
-([admin.rs:61](contracts/pursestrings/src/admin.rs#L61)) deletes the key in the same
+proposes again and waits out the timelock once unfrozen. At most 32 changes can be queued, and
+expired ones are cleared when a new one is proposed, so a freeze always fits in one transaction
+however much was queued. `revoke_agent`
+([admin.rs:66](contracts/pursestrings/src/admin.rs#L66)) deletes the key in the same
 transaction. Each is one owner transaction.
 
 Test: [`inv6_freeze_and_revoke_in_one_transaction`](contracts/pursestrings/tests/invariants.rs#L428)
 freezes the account, sees requests and approvals refused, sees that unfreezing is queued rather
 than applied, and checks that a revoked key is gone from the account and can't call
-`request_spend`. [`a_freeze_cancels_everything_queued`](contracts/pursestrings/src/admin.rs#L324)
-queues an unfreeze, freezes, and fails to apply it.
+`request_spend`. [`a_freeze_cancels_everything_queued`](contracts/pursestrings/src/admin.rs#L348)
+queues an unfreeze, freezes, and fails to apply it;
+[`a_full_queue_still_freezes_in_one_transaction`](contracts/pursestrings/src/admin.rs#L395)
+fills the queue and freezes.
 
 ### 7. Nobody can swap the code
 
@@ -133,7 +137,7 @@ The factory creates `<name>.<factory>`, deploys the code and calls `new` in one 
 access key ([factory lib.rs:80](contracts/factory/src/lib.rs#L80)). The account can only change
 its code through `Migrate`: the owner proposes a code hash, it waits out the timelock like any
 loosening, and `apply_migration`
-([admin.rs:198](contracts/pursestrings/src/admin.rs#L198)) deploys it only if it's the factory's
+([admin.rs:219](contracts/pursestrings/src/admin.rs#L219)) deploys it only if it's the factory's
 newest release. Older builds stay published, but moving back to one could undo protections that
 buyers paid under, such as NEAR held out of the owner's reach, so it's refused. Once the proposal is due, anyone can deliver code matching the
 hash, so a DAO owner never has to store the wasm in a proposal of its own. That makes a due
@@ -175,6 +179,15 @@ Tests:
 - **Accounts on builds before `newest release only` can still downgrade.** The rule lives in the
   account's own code, so it protects an account from the migration that installs it onward. The
   testnet Range account runs the Nov 2 build and can't migrate (README, Limitations).
+- **A council member can wipe the owner's queue.** Any council member can freeze, and a freeze
+  cancels everything queued, so a rogue member could keep cancelling a DAO's queued changes, or
+  re-freeze after each unfreeze. The DAO removes the member instantly (`RemoveCouncil` is a
+  tightening) in the same vote as its `Unfreeze`.
+- **Newest release only cuts both ways.** Publishing a new release makes every pending
+  migration to an older one fail, so owners propose again. A broken newest release, or a lost
+  factory admin key, stops every account on this code from migrating until a fixed build is
+  published, and a hash can't be published twice. The factory's `releases` view grows with every
+  release; at about 700 the check runs out of gas and accounts on this code can't migrate again.
 - **The live demo's shared budgets.** The model budget, the agent key's gas and the shop's 64
   quote slots are shared. Each account gets a daily share of the model budget, two open quotes
   and 20 contract calls a day from chat (300 in all), and quotes last ten minutes, so it takes

@@ -157,7 +157,7 @@ These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testne
 - **One open claim per account**, so nobody can sit on every bounty at once
   ([bounty.rs:105](contracts/pursestrings/src/bounty.rs#L105), [test](contracts/pursestrings/src/bounty.rs#L550)).
 - **Any council member can freeze the board at once**
-  ([admin.rs:91](contracts/pursestrings/src/admin.rs#L91)), and the freeze cancels anything
+  ([admin.rs:96](contracts/pursestrings/src/admin.rs#L96)), and the freeze cancels anything
   already queued, so nobody can undo it with an unfreeze they queued earlier. Unfreezing, adding
   a council member or raising a tier waits for a DAO vote and then the timelock
   ([`any_council_member_freezes_and_only_the_dao_loosens_after_the_timelock`](contracts/pursestrings/tests/board.rs#L144)).
@@ -285,7 +285,7 @@ can submit settlement proofs.
 - **A stolen owner key** can't loosen anything quickly, but it can approve pending requests and
   withdraw to the owner's own account (never NEAR held for buyers). It can't move the code back to
   an older build either: a migration must be the factory's newest release
-  ([admin.rs:198](contracts/pursestrings/src/admin.rs#L198)).
+  ([admin.rs:219](contracts/pursestrings/src/admin.rs#L219)).
 - **No USD budgets:** limits are in each asset's own units, with no price oracle.
 - **The first bounty board couldn't be upgraded.** Its DAO owner can't carry a 573 KB upgrade in
   one proposal, and its code predates the fix that lets anyone deliver code once the owner's

@@ -20,8 +20,13 @@ struct Release {
 /// A queued change that nobody applied within this long after it came due needs proposing again,
 /// so an old proposal can't be sprung long after everyone stopped watching it.
 pub const PROPOSAL_EXPIRES_S: u64 = 7 * 86_400;
+/// At most this many changes wait in the queue at once, so a freeze, which cancels them all,
+/// always fits in one transaction. Expired ones are cleared whenever something new is queued.
+pub const MAX_QUEUED: usize = 32;
 
-const FACTORY_CHECK_GAS: Gas = Gas::from_tgas(10);
+/// The factory's `releases` view costs about 0.035 Tgas per release, so this covers roughly 700
+/// releases; past that, accounts on this code could no longer migrate.
+const FACTORY_CHECK_GAS: Gas = Gas::from_tgas(25);
 const MIGRATION_CALLBACK_GAS: Gas = Gas::from_tgas(150);
 /// The recount in `migrate` measured about 14 Tgas at its worst in the sandbox; mainnet's deeper
 /// trie costs more per read.
@@ -142,9 +147,25 @@ impl Pursestrings {
         }
         preview.assert_valid();
 
+        let now = now_s();
+        let expired: Vec<u64> = self
+            .proposals
+            .iter()
+            .filter(|(_, p)| now > p.eta + PROPOSAL_EXPIRES_S)
+            .map(|(id, _)| *id)
+            .collect();
+        if !expired.is_empty() {
+            for id in &expired {
+                self.proposals.remove(id);
+            }
+            Event::QueueCancelled { ids: expired }.emit();
+        }
+        require!(
+            (self.proposals.len() as usize) < MAX_QUEUED,
+            "too many queued changes: apply or cancel some first"
+        );
         let id = self.next_proposal_id;
         self.next_proposal_id += 1;
-        let now = now_s();
         let eta = now + u64::from(self.policy.timelock_s);
         Event::ProposalQueued {
             id,
@@ -188,10 +209,10 @@ impl Pursestrings {
         self.apply_now(ops);
     }
 
-    /// Applies a queued `Migrate` once its timelock has passed. `code` must hash to the queued
-    /// code hash, and the factory must confirm it published that hash before anything deploys.
+    /// Applies a queued `Migrate` once its timelock has passed and before it expires. `code`
+    /// must hash to the queued code hash, and that hash must be the factory's newest release.
     /// Anyone can deliver the code: the owner's say is the proposal, and a DAO owner would
-    /// otherwise have to store the whole wasm in one of its own proposals. A freeze holds it,
+    /// otherwise have to store the whole wasm in one of its own proposals. A freeze cancels it,
     /// so a council member can stop a queued code change the owner can't cancel in time.
     /// Takes borsh arguments `(u64, Vec<u8>)` because the code is a few hundred KB.
     #[payable]
@@ -239,7 +260,7 @@ impl Pursestrings {
         #[serializer(borsh)] code_hash: near_sdk::CryptoHash,
         #[serializer(borsh)] code: Vec<u8>,
     ) -> Promise {
-        // A release is about 150 bytes of JSON, so this allows hundreds of them.
+        // A release is about 110 bytes of JSON; gas, not this bound, is the limit (see above).
         let newest = env::promise_result_checked(0, 64 * 1024)
             .ok()
             .and_then(|bytes| near_sdk::serde_json::from_slice::<Vec<Release>>(&bytes).ok())
@@ -273,10 +294,13 @@ impl Pursestrings {
     /// the owner's key included, has to propose again and wait out the timelock once unfrozen.
     fn cancel_queue(&mut self) {
         let ids: Vec<u64> = self.proposals.keys().copied().collect();
-        for id in ids {
-            self.proposals.remove(&id);
-            Event::ProposalCancelled { id }.emit();
+        if ids.is_empty() {
+            return;
         }
+        for id in &ids {
+            self.proposals.remove(id);
+        }
+        Event::QueueCancelled { ids }.emit();
     }
 
     fn apply_now(&mut self, ops: Vec<PolicyOp>) {
@@ -365,6 +389,65 @@ mod tests {
         as_owner(eta + PROPOSAL_EXPIRES_S);
         c.apply_proposal(id);
         assert!(c.policy.chains.contains(&1));
+    }
+
+    #[test]
+    fn a_full_queue_still_freezes_in_one_transaction() {
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        for i in 0..MAX_QUEUED as u64 {
+            c.propose(vec![PolicyOp::AddChain { chain_id: i + 1 }])
+                .expect("queued");
+        }
+        assert!(refused(|| {
+            c.propose(vec![PolicyOp::AddChain { chain_id: 999 }]);
+        }));
+        c.freeze();
+        assert!(c.proposals().is_empty());
+        let logs = near_sdk::test_utils::get_logs();
+        assert_eq!(
+            logs.iter()
+                .filter(|l| l.contains("queue_cancelled"))
+                .count(),
+            1,
+            "{logs:?}"
+        );
+    }
+
+    #[test]
+    fn expired_changes_make_room_in_the_queue() {
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        for i in 0..MAX_QUEUED as u64 {
+            c.propose(vec![PolicyOp::AddChain { chain_id: i + 1 }]);
+        }
+        let eta = 1_000 + u64::from(c.policy.timelock_s);
+        as_owner(eta + PROPOSAL_EXPIRES_S + 1);
+        let id = c
+            .propose(vec![PolicyOp::AddChain { chain_id: 999 }])
+            .expect("room again");
+        assert_eq!(
+            c.proposals().iter().map(|(i, _)| *i).collect::<Vec<_>>(),
+            vec![id]
+        );
+    }
+
+    #[test]
+    fn a_migration_left_a_week_past_due_expires() {
+        let code = b"new code".to_vec();
+        let hash = Base58CryptoHash::from(env::sha256_array(&code));
+        let mut c = contract(base_policy());
+        as_owner(1_000);
+        let id = c
+            .propose(vec![PolicyOp::Migrate { code_hash: hash }])
+            .expect("queued");
+        let eta = 1_000 + u64::from(c.policy.timelock_s);
+        as_owner(eta + PROPOSAL_EXPIRES_S + 1);
+        assert!(refused(|| {
+            let _ = c.apply_migration(id, code.clone());
+        }));
+        as_owner(eta + PROPOSAL_EXPIRES_S);
+        let _ = c.apply_migration(id, code);
     }
 
     #[test]

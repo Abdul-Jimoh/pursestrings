@@ -38,6 +38,12 @@ if ((await codeHashOf(ACCOUNT)) === hash) {
 if (!(await view<boolean>(FACTORY, "is_published", { code_hash: hash }))) {
   await call(signer(ADMIN), FACTORY, "publish", { code_hash: hash, version: VERSION }, 1n);
 }
+// Accounts on current code migrate only to the factory's newest release; say so now rather
+// than after the timelock.
+const newest = (await view<{ code_hash: string }[]>(FACTORY, "releases", {})).at(-1)?.code_hash;
+if (newest !== hash) {
+  throw new Error(`${hash} isn't the factory's newest release (${newest}); build that one instead`);
+}
 const owner = await view<string>(ACCOUNT, "owner");
 
 const queued = async () =>

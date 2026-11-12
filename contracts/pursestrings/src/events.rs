@@ -26,6 +26,9 @@ pub enum Event {
     },
     #[event_version("1.0.0")]
     ProposalCancelled { id: u64 },
+    /// One event for a whole queue, so a freeze stays within NEAR's per-receipt log limit.
+    #[event_version("1.0.0")]
+    QueueCancelled { ids: Vec<u64> },
     #[event_version("1.0.0")]
     AgentAdded {
         public_key: PublicKey,
