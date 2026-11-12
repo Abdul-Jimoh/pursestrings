@@ -365,7 +365,9 @@ export function ShopChallenge({
                         ? "Paid and held. The check is delivered within seconds."
                         : order.status === "Refunded"
                           ? "Refunded in full before delivery, so no check."
-                          : "Waiting for your payment."}
+                          : order.expires_at <= Date.now() / 1000
+                            ? "This quote expired before it was paid. Nothing was taken: ask the desk for a new one."
+                            : "Waiting for your payment."}
                   </p>
                   {(order.status === "Paid" || order.status === "Delivered") && (
                     <Link

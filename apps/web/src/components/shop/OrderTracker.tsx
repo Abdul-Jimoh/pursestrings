@@ -80,6 +80,8 @@ export function OrderTracker({
   const paid = order.status !== "Quoted";
   const delivered = order.status === "Delivered";
   const late = order.status === "Paid" && order.deliver_by !== null && now >= order.deliver_by;
+  // The contract refuses payment for an expired quote and the deposit goes straight back.
+  const expired = order.status === "Quoted" && now >= order.expires_at;
 
   return (
     <div>
@@ -92,7 +94,9 @@ export function OrderTracker({
           title={
             paid
               ? `${near(order.price)} paid and held by the contract`
-              : "Waiting for your payment to land…"
+              : expired
+                ? "This quote expired before it was paid. Nothing was taken: ask the agent for a new one."
+                : "Waiting for your payment to land…"
           }
         >
           {payTx && (
@@ -176,7 +180,7 @@ export function OrderTracker({
         </div>
       )}
 
-      {(delivered || order.status === "Refunded") && (
+      {(delivered || expired || order.status === "Refunded") && (
         <button
           type="button"
           onClick={onNew}
