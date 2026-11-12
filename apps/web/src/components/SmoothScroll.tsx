@@ -17,25 +17,35 @@ export function lockScroll(locked: boolean) {
 }
 
 /**
- * Scrolls to the element named in the URL's hash, if any. Pages whose sections load data call it
- * once they've laid out; it re-aims once more in case later content moved the target.
+ * Scrolls to the element named in the URL's hash, if any, and holds it there while sections above
+ * it load their data, until the reader scrolls or a few seconds pass.
  */
 export function scrollToHash() {
   const id = decodeURIComponent(window.location.hash.slice(1));
   if (!id) return;
   // A jump, not a glide: the browser may already be at the section while Lenis still thinks the
-  // page is at the top, and a glide would start from there. Re-aim only if content above moved it.
+  // page is at the top, and a glide would start from there.
   const go = () => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (Math.abs(el.getBoundingClientRect().top - 24) < 8) return;
+    if (Math.abs(el.getBoundingClientRect().top - 24) < 4) return;
     if (lenis) lenis.scrollTo(el, { offset: -24, immediate: true, force: true });
     else el.scrollIntoView({ block: "start" });
   };
+  // ResizeObserver runs after layout and before paint, so the correction lands in the same frame
+  // as the content that pushed the section down, and the section never visibly moves.
+  const ro = new ResizeObserver(go);
+  ro.observe(document.body);
+  const stop = () => {
+    ro.disconnect();
+    for (const e of userScroll) window.removeEventListener(e, stop);
+  };
+  for (const e of userScroll) window.addEventListener(e, stop, { passive: true, once: true });
   requestAnimationFrame(go);
-  setTimeout(go, 600);
-  setTimeout(go, 1500);
+  setTimeout(stop, 4000);
 }
+
+const userScroll = ["wheel", "touchstart", "keydown", "mousedown"] as const;
 
 /** Lenis drives the scroll; GSAP's ticker drives Lenis so ScrollTrigger and scroll stay in step. */
 export function SmoothScroll() {
