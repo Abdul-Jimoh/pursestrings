@@ -186,11 +186,38 @@ if (shopAccount) {
     const m = /^EVM_RPC_(\d+)$/.exec(k);
     if (m?.[1] && v) evmRpc[Number(m[1])] = v;
   }
+  // With a signer, it also proves each payment once Base has finalized it, so the request ends
+  // Done and its budget is no longer held. That account only pays gas and 1 yocto per proof; the
+  // contract accepts a proof only if the MPC network can see the transaction settled.
+  const proverAccount = process.env.PROVER_ACCOUNT;
+  const proverKey = process.env.PROVER_KEY;
+  const caller =
+    proverAccount && proverKey
+      ? new Pursestrings(rpc, shopAccount).caller(proverAccount, proverKey)
+      : undefined;
   if (Object.keys(evmRpc).length) {
     const relay = () =>
-      relayOnce({ nearRpc: rpc, account: shopAccount, evmRpc })
+      relayOnce({
+        nearRpc: rpc,
+        account: shopAccount,
+        evmRpc,
+        ...(caller
+          ? {
+              prover: {
+                confirm: (id: number) => caller.confirmEvm(id),
+                release: (id: number) => caller.releaseEvm(id),
+                settle: (id: number) => caller.settleIntent(id),
+                marginS: 600,
+              },
+            }
+          : {}),
+      })
         .then((reports) => {
-          for (const r of reports) console.log(`relay: ${JSON.stringify(r)}`);
+          // Waiting for finality is the normal state: log only what changed.
+          for (const r of reports.filter(
+            (x) => x.sent === "sent" || (x.proof && x.proof !== "not yet"),
+          ))
+            console.log(`relay: ${JSON.stringify(r)}`);
         })
         .catch((e) => console.error("relay:", e));
     setInterval(relay, 30_000);
