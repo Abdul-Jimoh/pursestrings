@@ -74,7 +74,7 @@ export function NothingToTrust() {
 
   return (
     <section ref={root} className="surface-ink grain relative px-5 py-24 md:px-10 md:py-36">
-      <Chapter n="04" label="Nothing to trust" dark />
+      <Chapter n="05" label="Nothing to trust" dark />
       <h2 className="display mt-8 max-w-5xl text-[clamp(2.5rem,6.4vw,6.8rem)]">
         No server <span className="text-paper/45">in the</span> middle.
       </h2>

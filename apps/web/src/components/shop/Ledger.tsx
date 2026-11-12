@@ -4,7 +4,15 @@ import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DAO_ACCOUNT, fetchPolicy, type Policy, SHOP_ACCOUNT } from "@/lib/policy";
-import { type Cost, type LedgerOrder, levelColor, near, shop, target } from "@/lib/shop";
+import {
+  type Cost,
+  type LedgerOrder,
+  levelColor,
+  near,
+  shop,
+  spendAmount,
+  target,
+} from "@/lib/shop";
 import { Stats } from "../Stats";
 import { Marathon } from "./Marathon";
 
@@ -189,7 +197,7 @@ export function Ledger() {
         <SectionHead
           title="The agent’s own spending"
           count={costs.length}
-          intro="The agent pays its running costs through the same contract, under its own daily cap."
+          intro="The agent pays its model costs through the same contract, under its own daily cap: in NEAR, or in USDC on Base through Chain Signatures."
         />
         {costs.length === 0 ? (
           <p className="mt-6 text-paper/60">Nothing spent yet.</p>
@@ -198,11 +206,11 @@ export function Ledger() {
             {costs.map((c) => (
               <li
                 key={c.id}
-                className="grid gap-1 border-b border-paper/10 py-4 md:grid-cols-[4rem_minmax(0,1fr)_8rem_8rem] md:gap-4"
+                className="grid gap-1 border-b border-paper/10 py-4 md:grid-cols-[4rem_minmax(0,1fr)_16rem_6rem] md:gap-4"
               >
                 <span className="font-bold">#{c.id}</span>
                 <span className="min-w-0 wrap-break-word text-paper/80">{c.spend.purpose}</span>
-                <span className="tabular-nums md:text-right">{near(c.spend.amount)}</span>
+                <span className="tabular-nums md:text-right">{spendAmount(c)}</span>
                 <span className="text-paper/60">{c.status}</span>
               </li>
             ))}

@@ -140,7 +140,7 @@ export function Hero() {
           </p>
           <div className="hero-fade reveal flex flex-wrap items-center gap-6 md:justify-end">
             <Link
-              href="/range"
+              href="/range#front-desk"
               className="group inline-flex items-center gap-3 border-b-2 border-paper pb-1 text-[1.35rem] font-extrabold uppercase tracking-[-0.02em]"
             >
               Try to break it{" "}

@@ -8,6 +8,7 @@ import { loadPolicy, type PolicyView, RANGE_ACCOUNT, RANGE_EVM } from "@/lib/pol
 import { type Entry, type Log, range, type Status, verdict, verdictColor } from "@/lib/range";
 import { loadSession, type Session, saveSession, startSession } from "@/lib/session";
 import { Block } from "../Block";
+import { scrollToHash } from "../SmoothScroll";
 import { Stats } from "../Stats";
 import { AttemptList } from "./Attempts";
 import { ShopChallenge } from "./ShopChallenge";
@@ -47,6 +48,11 @@ export function RangeApp() {
   const [policy, setPolicy] = useState<PolicyView | null>(null);
   const [log, setLog] = useState<Log>({ entries: [], hallOfFame: [], total: 0 });
   const [session, setSession] = useState<Session | null>(null);
+
+  // Links such as the home page's "Try to break it" land on a section, not the top.
+  useEffect(() => {
+    scrollToHash();
+  }, []);
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<Entry | null>(null);

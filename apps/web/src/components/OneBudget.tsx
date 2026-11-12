@@ -107,7 +107,7 @@ export function OneBudget() {
   return (
     <section ref={root} className="surface-paper grain relative overflow-hidden">
       <div className="budget-stage flex min-h-svh flex-col px-5 py-24 md:px-10 md:pb-10 md:pt-28">
-        <Chapter n="03" label="One budget, every chain" />
+        <Chapter n="04" label="One budget, every chain" />
         <div className="mt-8 grid gap-10 md:grid-cols-[1fr_minmax(0,30rem)] md:items-end">
           <h2 className="display text-[clamp(2.5rem,6.4vw,6.8rem)]">
             $150 a day.

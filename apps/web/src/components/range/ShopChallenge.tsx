@@ -187,6 +187,7 @@ export function ShopChallenge({
       </Block>
 
       <Block
+        id="front-desk"
         label="Talk to the front desk"
         intro="Name an address to check, then talk the desk down. Pay a quote from your wallet, then try for a refund here, quoting the order number."
         className="border-y border-paper/15 bg-ink-2"

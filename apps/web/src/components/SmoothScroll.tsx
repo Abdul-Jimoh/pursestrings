@@ -16,6 +16,23 @@ export function lockScroll(locked: boolean) {
   else lenis?.start();
 }
 
+/**
+ * Scrolls to the element named in the URL's hash, if any. Pages whose sections load data call it
+ * once they've laid out; it re-aims once more in case later content moved the target.
+ */
+export function scrollToHash() {
+  const id = decodeURIComponent(window.location.hash.slice(1));
+  if (!id) return;
+  const go = () => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (lenis) lenis.scrollTo(el, { offset: -24 });
+    else el.scrollIntoView({ block: "start" });
+  };
+  setTimeout(go, 350);
+  setTimeout(go, 1500);
+}
+
 /** Lenis drives the scroll; GSAP's ticker drives Lenis so ScrollTrigger and scroll stay in step. */
 export function SmoothScroll() {
   useEffect(() => {

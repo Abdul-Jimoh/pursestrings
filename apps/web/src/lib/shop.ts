@@ -127,9 +127,31 @@ export type LedgerOrder = Order & { id: number; verdict: Level | null; deliverTx
 export interface Cost {
   id: number;
   agent: string;
-  spend: { amount: string; purpose: string; dest: Record<string, { account?: string }> };
+  spend: {
+    asset: "Near" | { Evm: { chain_id: number; token: string | null } } | Record<string, unknown>;
+    amount: string;
+    purpose: string;
+    dest: Record<string, { account?: string }>;
+  };
   status: string;
   created_at: number;
+}
+
+const CHAINS: Record<number, string> = { 84532: "Base Sepolia", 8453: "Base" };
+
+/** A spend's amount in its own asset: NEAR, or USDC (6 decimals) on an EVM chain. */
+export function spendAmount(c: Cost): string {
+  const a = c.spend.asset;
+  if (a === "Near") return near(c.spend.amount);
+  if (a && typeof a === "object" && "Evm" in a) {
+    const evm = a.Evm as { chain_id: number; token: string | null };
+    const units = Number(c.spend.amount) / 1e6;
+    const where = CHAINS[evm.chain_id] ?? `chain ${evm.chain_id}`;
+    return evm.token
+      ? `${units.toFixed(6).replace(/0+$/, "")} USDC on ${where}`
+      : `${c.spend.amount} wei on ${where}`;
+  }
+  return c.spend.amount;
 }
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };

@@ -9,6 +9,17 @@ import { Chapter } from "./Section";
 const T = "contracts/pursestrings/tests";
 const proofs = [
   {
+    claim:
+      "The shop can't sell below its floor, keep an undelivered payment, or spend what buyers paid",
+    kind: "Sandbox test",
+    href: blob(`${T}/shop.rs`),
+  },
+  {
+    claim: "The DAO's board pays by earned trust, against the real Sputnik DAO code",
+    kind: "Sandbox test",
+    href: blob(`${T}/board.rs`),
+  },
+  {
     claim: "The agent's key can't move funds or call owner methods",
     kind: "Sandbox test",
     href: blob(`${T}/invariants.rs`),
@@ -49,6 +60,11 @@ const proofs = [
     href: "https://sepolia.basescan.org/tx/0x0d5615a263515af48ff4aca3eef4ffbca84cc7519297c5f9cbc074efc1213e73",
   },
   {
+    claim: "Every claim beside the test that proves it, with no chain needed",
+    kind: "make verify",
+    href: blob("scripts/verify.sh"),
+  },
+  {
     claim: "The whole story, from a fresh clone, in one command",
     kind: "make demo",
     href: blob("apps/agent/src/demo.ts"),
@@ -83,7 +99,7 @@ export function Verify() {
       id="verify"
       className="surface-paper grain relative px-5 py-24 md:px-10 md:py-36"
     >
-      <Chapter n="06" label="Verify it yourself" />
+      <Chapter n="07" label="Verify it yourself" />
       <h2 className="display mt-8 text-[clamp(2.5rem,6.4vw,6.8rem)]">
         Don&rsquo;t take <span className="text-string">our</span> word.
       </h2>

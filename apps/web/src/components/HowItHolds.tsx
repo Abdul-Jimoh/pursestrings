@@ -109,7 +109,7 @@ export function HowItHolds() {
   return (
     <section ref={root} id="how" className="surface-ink grain relative">
       <div className="how-stage relative flex min-h-svh flex-col px-5 py-24 md:px-10 md:pb-10 md:pt-28">
-        <Chapter n="02" label="How it holds" dark />
+        <Chapter n="03" label="How it holds" dark />
         <h2 className="display mt-8 text-[clamp(2.5rem,6.4vw,6.8rem)]">
           The agent asks.
           <br />

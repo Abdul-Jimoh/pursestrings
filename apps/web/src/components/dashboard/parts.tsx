@@ -396,7 +396,7 @@ export function RedTeam() {
         </a>
         <a
           className="inline-flex items-center gap-1.5 underline underline-offset-4 hover:text-paper"
-          href="/range"
+          href="/range#attempt"
         >
           Try it live in the Range <ArrowRight className="size-4" />
         </a>

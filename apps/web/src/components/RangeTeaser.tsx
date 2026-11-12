@@ -63,7 +63,7 @@ export function RangeTeaser() {
       ref={root}
       className="relative overflow-hidden bg-ink-2 px-5 py-24 text-paper md:px-10 md:py-36"
     >
-      <Chapter n="05" label="The Range" dark />
+      <Chapter n="06" label="The Range" dark />
       <div className="mt-8 grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)] lg:items-center">
         <div>
           <h2 className="display text-[clamp(2.5rem,6.4vw,6.8rem)]">
@@ -76,7 +76,7 @@ export function RangeTeaser() {
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-8">
             <Link
-              href="/range"
+              href="/range#attempt"
               className="group inline-flex items-center gap-3 border-b-2 border-string pb-1 text-[1.35rem] font-extrabold uppercase tracking-[-0.02em]"
             >
               Enter the Range{" "}

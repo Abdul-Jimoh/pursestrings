@@ -6,12 +6,14 @@ import { OneBudget } from "@/components/OneBudget";
 import { Problem } from "@/components/Problem";
 import { RangeTeaser } from "@/components/RangeTeaser";
 import { Verify } from "@/components/Verify";
+import { WhatRuns } from "@/components/WhatRuns";
 
 export default function Home() {
   return (
     <main>
       <Hero />
       <Problem />
+      <WhatRuns />
       <HowItHolds />
       <OneBudget />
       <NothingToTrust />
