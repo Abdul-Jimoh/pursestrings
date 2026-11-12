@@ -260,8 +260,9 @@ impl Pursestrings {
         #[serializer(borsh)] code_hash: near_sdk::CryptoHash,
         #[serializer(borsh)] code: Vec<u8>,
     ) -> Promise {
-        // A release is about 110 bytes of JSON; gas, not this bound, is the limit (see above).
-        let newest = env::promise_result_checked(0, 64 * 1024)
+        // A release is about 110 bytes of JSON, so this bound passes about 880 of them: gas
+        // runs out first, at about 700 (see FACTORY_CHECK_GAS).
+        let newest = env::promise_result_checked(0, 96 * 1024)
             .ok()
             .and_then(|bytes| near_sdk::serde_json::from_slice::<Vec<Release>>(&bytes).ok())
             .and_then(|r| r.last().map(|x| near_sdk::CryptoHash::from(x.code_hash)));
@@ -422,6 +423,11 @@ mod tests {
             c.propose(vec![PolicyOp::AddChain { chain_id: i + 1 }]);
         }
         let eta = 1_000 + u64::from(c.policy.timelock_s);
+        // On the last moment they can still be applied, they still hold their places.
+        as_owner(eta + PROPOSAL_EXPIRES_S);
+        assert!(refused(|| {
+            c.propose(vec![PolicyOp::AddChain { chain_id: 999 }]);
+        }));
         as_owner(eta + PROPOSAL_EXPIRES_S + 1);
         let id = c
             .propose(vec![PolicyOp::AddChain { chain_id: 999 }])
