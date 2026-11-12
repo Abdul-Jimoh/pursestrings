@@ -465,6 +465,8 @@ function BountyCard({
 }) {
   const [work, setWork] = useState("scam:");
   const mine = me !== null && b.claimant === me;
+  const turnedDown =
+    b.status === "Submitted" && review !== undefined && review.work === b.work && !review.accepted;
   const reqId = b.req_id;
   const yes = proposal ? Object.values(proposal.votes).filter((v) => v === "Approve").length : 0;
   const button =
@@ -475,7 +477,11 @@ function BountyCard({
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <p className="label">
           <span className="text-dim-ink">#{id} · </span>
-          <span className={statusTone[b.status]}>{statusText[b.status]}</span>
+          {turnedDown ? (
+            <span className="text-refused">Not accepted</span>
+          ) : (
+            <span className={statusTone[b.status]}>{statusText[b.status]}</span>
+          )}
         </p>
         <p className="text-[1.3rem] font-bold tracking-[-0.02em]">{near(b.reward)}</p>
       </div>
@@ -501,6 +507,12 @@ function BountyCard({
             {review.reasons.join(" ")}
           </p>
           {review.note && <p className="mt-1 leading-relaxed text-paper/60">{review.note}</p>}
+          {turnedDown && (
+            <p className="mt-2 leading-relaxed text-paper/60">
+              Nothing is paid. The claimant can fix the report and submit it again for a new review,
+              or give the bounty up so someone else can claim it.
+            </p>
+          )}
           {review.tx && (
             <a
               href={txUrl(review.tx)}
@@ -623,6 +635,18 @@ function BountyCard({
             className={`mt-3 ${button}`}
           >
             {b.status === "Submitted" ? "Submit again" : "Submit"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() =>
+              act(`reopen-${id}`, () =>
+                walletCall(BOARD_ACCOUNT, "reopen_bounty", { id }, { tgas: 30n, deposit: "1" }),
+              )
+            }
+            className="mt-3 ml-4 text-[0.95rem] text-dim-ink underline underline-offset-4 hover:text-paper disabled:opacity-40"
+          >
+            Give it up
           </button>
         </div>
       )}
