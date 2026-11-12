@@ -11,12 +11,16 @@ interface Summary {
   to: number | null;
   attempts: number;
   refused: number;
+  /** Neither refused nor paid: the contract sent it to a person to decide. */
+  waiting?: number;
   events: number;
   inconclusive?: number;
+  code?: string | null;
   kinds: {
     kind: string;
     attempts: number;
     refused: number;
+    waiting?: number;
     how: "event" | "failed" | "protocol";
     why: string | null;
     samples: string[];
@@ -72,9 +76,19 @@ export function Marathon() {
           on testnet ({day(s.from) === day(s.to) ? day(s.from) : `${day(s.from)}–${day(s.to)}`}): as
           a fooled agent with a real key, and as an outsider. {s.refused.toLocaleString()} were
           refused, {s.events.toLocaleString()} of them as decisions the contract logged on-chain.
+          {s.waiting
+            ? ` ${s.waiting} wasn't refused but held for a council member: the account it paid really had claimed that bounty, in an earlier test, so the contract treated it as a newcomer's payout. No money moved, and it expires unapproved.`
+            : ""}
           {s.inconclusive
             ? ` ${s.inconclusive} failed for some other reason, such as a network error, and aren't counted as refused.`
             : ""}
+          {s.code ? (
+            <>
+              {" "}
+              The shop ran code <span className="mono text-[0.92em]">{s.code.slice(0, 8)}…</span>,
+              the version live now.
+            </>
+          ) : null}
         </p>
       </header>
 
@@ -98,6 +112,11 @@ export function Marathon() {
                   className={`py-4 pr-6 text-right font-semibold tabular-nums ${k.refused === k.attempts ? "text-paid" : "text-string"}`}
                 >
                   {k.refused}
+                  {k.waiting ? (
+                    <span className="block text-[0.8rem] font-normal text-wait">
+                      {k.waiting} held for the council
+                    </span>
+                  ) : null}
                 </td>
                 <td className="py-4 pr-6 text-paper/70">
                   {howText[k.how]}
@@ -119,7 +138,10 @@ export function Marathon() {
             <p className="mt-1 text-paper/70">
               <span className={k.refused === k.attempts ? "text-paid" : "text-string"}>
                 {k.refused} of {k.attempts} refused
-              </span>{" "}
+              </span>
+              {k.waiting ? (
+                <span className="text-wait">, {k.waiting} held for the council</span>
+              ) : null}{" "}
               · {howText[k.how]}
             </p>
             <div className="mt-2">

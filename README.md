@@ -10,7 +10,7 @@ Built at NEAR HACKATHON for **Autonomous Business**, **Social Money**, **Agent E
 here the capped agents run a shop that sells to the public and a fund owned by a DAO; the
 contract builds every payment itself, on NEAR, on Base through Chain Signatures and through NEAR
 Intents; and any rule change that loosens the policy waits out a public timelock. 1,000 attacks
-on testnet, none got through.
+on testnet against the live code, none got money out.
 
 **Demo video (1:30):** [watch on X](https://x.com/404nam3/status/2120842831044423904)
 
@@ -166,15 +166,19 @@ These are the testnet board's tiers ([testnet-setup.ts](apps/shop/scripts/testne
 
 ```mermaid
 pie showData
-    title 1,000 attacks on the testnet shop and bounty board, all refused
-    "Fooled agent: refused and logged on-chain" : 652
-    "Outsider: transaction failed as expected" : 322
-    "Agent key misuse: refused by NEAR itself" : 26
+    title 1,000 attacks on the testnet shop and bounty board, Nov 12
+    "Fooled agent: refused and logged on-chain" : 566
+    "Outsider or owner: transaction failed as expected" : 406
+    "Agent key misuse: refused by NEAR itself" : 27
+    "Held for a council member, not paid" : 1
 ```
 
-- **Attack marathon:** 1,000 scripted attacks on testnet, as a fooled agent with a real key and
-  as an outsider. Every refusal is either a decision the contract logged or a failure with the
-  reason expected for that attack ([marathon.ts](apps/shop/scripts/marathon.ts), results with
+- **Attack marathon:** 1,000 scripted attacks on testnet against the code that's live now, as a
+  fooled agent with a real key, as an outsider and as the owner reaching for buyers' held NEAR:
+  999 refused, each either a decision the contract logged or a failure with the reason expected
+  for that attack. One was held for a council member instead: the account it tried to pay really
+  had claimed that bounty in an earlier test, so it counted as a newcomer's payout; no money
+  moved and it expires unapproved ([marathon.ts](apps/shop/scripts/marathon.ts), results with
   sample transactions in [marathon.json](apps/web/public/marathon.json)).
 - **Property tests:** random policies and random histories of requests, approvals, rejections,
   payments, refunds and deliveries, checked against a plain model of the rules, 10,000 cases each

@@ -1,199 +1,295 @@
 {
   "shop": "shop.factory.ps-spike-1028.testnet",
-  "board": "bounties.factory.ps-spike-1028.testnet",
-  "from": 1794254928994,
-  "to": 1794257158136,
+  "board": "board.factory.ps-spike-1028.testnet",
+  "code": "Ao4iypjpBUN4oD5qHXno6guUADqedkgrgY3GWGSfUAs2",
+  "from": 1794483887362,
+  "to": 1794486192500,
   "attempts": 1000,
-  "refused": 1000,
-  "events": 652,
+  "refused": 999,
+  "waiting": 1,
+  "events": 566,
   "inconclusive": 0,
   "kinds": [
     {
       "kind": "agent quotes under the floor",
-      "attempts": 285,
-      "refused": 285,
+      "attempts": 199,
+      "refused": 199,
+      "waiting": 0,
       "how": "event",
       "why": "{\"reason\":{\"BelowFloor\":{\"floor\":\"50000000000000000000000\"}}}",
       "samples": [
-        "GSuo1YoyRzftGCVxBwgjbNm6anzMzPF4nS36wKqqxXCs",
-        "7GdWo4rp4znqmbyAGDHuEdwq5jHnx5Rus4qusWztKXp3",
-        "Hp9DrctDpPBq1rDNwBntwQrTfxiG6tronUvYBo37ti7H"
+        "97DTCSN91Ya1DwmUxfmnBPL8JGw4anXvxEUg4oHDJVBC",
+        "6kPfviwHz52ENvha36heZiPrFypYHPnxSFXbLCSk9uf6",
+        "NJtXYBxtDd47pKHVSjiCtYqBAcufhSC2HF2vCUv3oFr"
       ]
     },
     {
-      "kind": "outsider redirects the split",
-      "attempts": 53,
-      "refused": 53,
+      "kind": "outsider takes back someone else's payment",
+      "attempts": 35,
+      "refused": 35,
+      "waiting": 0,
       "how": "failed",
-      "why": "owner only",
+      "why": "only the buyer",
       "samples": [
-        "H4TvHGRKWqjsSvZCfhciRTNffiFGeVhkAAJEUnuiM8zM",
-        "5M2oqsy8kfWNWHV1ohPTYs4QW14byokWVa4Ez1hzJYvx",
-        "HshZZu7wjjKLJPet2mGijuzkKHCWCuJQD5KjoxRMSuJ"
+        "uwmLMcCa5RzjTYopUGcC9jjBEQtqSy787VCm86LYQPn",
+        "Bre6y1JVAwESj3gizRh1BaLXeyHkaYDVF2FZgtjhNakJ",
+        "AL3QyR8kx3jRM7MAePhFiR4swNw2ZKFrYKb2NPd1grbF"
+      ]
+    },
+    {
+      "kind": "owner withdraws NEAR held for buyers",
+      "attempts": 51,
+      "refused": 51,
+      "waiting": 0,
+      "how": "failed",
+      "why": "that NEAR is held for buyers or unpaid shares",
+      "samples": [
+        "3mU2wThWWf3GuA64RTxnxNqkRMxirUK4v3dijAecZ5xn",
+        "DrVT5nHstmfsBaUoEQHHSpuYpkb2cVwSf8L18EyJjc2i",
+        "BAgbgBGUJYfJatxDG41eZAovjk5KGEC2abbHYnyjUEip"
+      ]
+    },
+    {
+      "kind": "contributor claims a second bounty while holding one",
+      "attempts": 33,
+      "refused": 33,
+      "waiting": 0,
+      "how": "failed",
+      "why": "finish or give up your current claim first",
+      "samples": [
+        "F47EqQc6Ri6uVNSZ2NK8nUkJJHcy9Rx5EDaSFVGeKQkS",
+        "4nNAejPDzwiSbyZTVZXY4mZvATs3W746zLy5iwnXNohc",
+        "DJRyvDEAZCdRXEE1rrgTiWwbeoK7DJeNy7Yogxyorz57"
+      ]
+    },
+    {
+      "kind": "agent refunds part of a paid, undelivered order",
+      "attempts": 64,
+      "refused": 64,
+      "waiting": 0,
+      "how": "event",
+      "why": "{\"reason\":{\"NotWhole\":{\"held\":\"60000000000000000000000\"}}}",
+      "samples": [
+        "EjAUMXJ2ybDnz79BAiyTFehUQn33ZyFPidkSypexA2YW",
+        "AwEPGhDcxj1CQ8Qv3umfdeJJMepqvBKVA2CkuvVciAUd",
+        "HtfAXC7Ky1tjBbd65XUr1rppiiiYTa17Nwu6fuDqaPYj"
       ]
     },
     {
       "kind": "outsider lowers the floor",
-      "attempts": 31,
-      "refused": 31,
+      "attempts": 29,
+      "refused": 29,
+      "waiting": 0,
       "how": "failed",
       "why": "owner only",
       "samples": [
-        "4JQ5LCK5ZESKbEz15FmVrG6RpefaJDFERPPdnirsbCPM",
-        "66fuXaC8TjffYVp4qvafocs9zmfZ3d6nxFprffL8hmcQ",
-        "93JL2E2H1cphM6iwA1Zk85dT9PJ5NYZ7RHbNy1aSa928"
+        "AvjUm8WCna8SpTSnGpS9rraMnT99ZHjsbiBxfT3xVCpp",
+        "EVWFRP3Sdp47nnUjRMAXv3CDcqQhXVkke8v7RyHFE8Y",
+        "AWwAWakJo2xPAzgHWTd2H6jx2rHDZj2r4ahEgSCngVfE"
+      ]
+    },
+    {
+      "kind": "bounty agent pays a claimant more than the reward",
+      "attempts": 49,
+      "refused": 49,
+      "waiting": 0,
+      "how": "event",
+      "why": "{\"reason\":\"BountyMismatch\"}",
+      "samples": [
+        "8acVohmPHaQC8kTCk9vcWBpXzR3149R4xrKUjd7FwpWP",
+        "Hv7WZb2D4WhGefNnmgbGV1P3z9NAWAo6eqrXHHeTyEjT",
+        "5X4BuiLLvSLymiMWGYHi18LEvs2yJgP9zgNZQUBSDiXW"
+      ]
+    },
+    {
+      "kind": "agent pays someone off the allowlist",
+      "attempts": 63,
+      "refused": 63,
+      "waiting": 0,
+      "how": "event",
+      "why": "{\"reason\":\"RecipientNotAllowed\"}",
+      "samples": [
+        "sJA5buSL8auVimD67onk6QGWZ5f8xppW96dSNGmGGSz",
+        "7wQ3pLRy5M8PtEyNoCzecbVUAo6W8V8AwUYHVQzh9hMv",
+        "GUqA4ooqGCLKy5LbZPfA1PWYLfZjDAvk86k6rDq31piU"
+      ]
+    },
+    {
+      "kind": "outsider pays a quote made for someone else",
+      "attempts": 47,
+      "refused": 47,
+      "waiting": 0,
+      "how": "failed",
+      "why": "quote is for another buyer",
+      "samples": [
+        "9RoK6u1iPhpE4PnnNcnqmacaBTRt3kaKCGWwTPmaFMpS",
+        "EEPSYDAon8SCdoa4fXsUmwXE7VgVseXuqhHooLVRK8U7",
+        "2XvRhcwqPpDhTxFS9WVsoNsSBQ4nmqPDtXwNNDfiiqWR"
       ]
     },
     {
       "kind": "bounty agent pays someone other than the claimant",
-      "attempts": 104,
-      "refused": 104,
+      "attempts": 70,
+      "refused": 69,
+      "waiting": 1,
       "how": "event",
       "why": "{\"reason\":\"BountyMismatch\"}",
       "samples": [
-        "A21Avi1t3P3Pt7vQPUbbUGonpSTDX7LQ3YBkniRxXhA1",
-        "FEytRK4HrKp1Qtg4ED9wDfmHDtjxzsv6HKCAYZnA5Yz2",
-        "2HvyPf6e54zmm5dC3VVYxmnQyFMnMAtpbKv2uX2UEynw"
+        "4bSTw6DhCgE5xDMLkEegjAtFQ6A6coLFA6AfGqJDpqmy",
+        "En61zXyVhLAGUgw5A41gi5ni8MVXpvgT28xCtkatap3r",
+        "BwiaAZ35YiWrMpsZL7bHdSSUsXutb68WLZfD4z7BNdU4"
+      ]
+    },
+    {
+      "kind": "agent refunds more than the shop kept",
+      "attempts": 73,
+      "refused": 73,
+      "waiting": 0,
+      "how": "event",
+      "why": "{\"reason\":{\"OverHeld\":{\"max\":\"5000000000000000000000\"}}}",
+      "samples": [
+        "4uYTrpRtDMrteZ8pC8Yess8FgUKfzpCAEoerB2qFdaXD",
+        "EKVEjTENNhYRGMqTzYvQdtMxESz8vzy75pnEifyE3oLo",
+        "Ht7vdpLUVLYAqiTVaHic8yJ69UR189eMNkMQwmV4hSxW"
       ]
     },
     {
       "kind": "agent key calls an owner method",
-      "attempts": 26,
-      "refused": 26,
+      "attempts": 27,
+      "refused": 27,
+      "waiting": 0,
       "how": "protocol",
       "why": "AccessKeyDepositWithFunctionCallActionError: Deposit is not allowed with function call",
       "samples": []
     },
     {
-      "kind": "outsider pays a quote made for someone else",
-      "attempts": 59,
-      "refused": 59,
+      "kind": "buyer takes a payment back before the delivery deadline",
+      "attempts": 40,
+      "refused": 40,
+      "waiting": 0,
       "how": "failed",
-      "why": "quote is for another buyer",
+      "why": "the agent still has time to deliver",
       "samples": [
-        "EuJM7P6u25S1x5dEtoyYkSwh4VcAqruCHiv46Ea6ytG6",
-        "3qpkqPLtnxcYWfkY3LRwmBpiBCihSM1mpg3uSbRzRMuS",
-        "E7LhoPJRMbNVAPHUaThRK2iY3vDw3dNq5jXhN5QWVLn6"
-      ]
-    },
-    {
-      "kind": "buyer pays less than the quote",
-      "attempts": 43,
-      "refused": 43,
-      "how": "failed",
-      "why": "less than the price",
-      "samples": [
-        "9KvXStFb7bveVFiRt9QLURfYvXvDK379BuvmLZ7dH5hH",
-        "9tbRyPhJfLP8MeNEemEX7CtjKqc432ecras4xkeuiWfA",
-        "kynuiVAoTS5kYiC6XWhnrVpZU2kWjAw5RozHqnbEEyo"
+        "H9QsWrhYfbDqJ8pMQkxXSJGJv4FwGf6eJYcqtXT8KVcK",
+        "F937dP7MphrkE3BiV3AiizNnfhQMjBa7VwjztC1urx5x",
+        "45t4UXCxvAQRQazigNmV2AmX1UuuFBLqxVcGRJTkMBdv"
       ]
     },
     {
       "kind": "agent refunds an order nobody paid",
-      "attempts": 71,
-      "refused": 71,
+      "attempts": 49,
+      "refused": 49,
+      "waiting": 0,
       "how": "event",
       "why": "{\"reason\":\"NotPaid\"}",
       "samples": [
-        "D9QubWZBRSzqMzXBdhnsPQtgr1fQDgdJ7afFpmK6viHa",
-        "9s2gEV5obJbBkvphh9uFD2GNjgcQVvaoXBZRDWmWEHCc",
-        "AyVbtLTfss5ApZF32sHT1KXDQAekBcjEHeTwdu1R5rtG"
+        "tXBKS5JZ5oYx6y8sWMspewAd3KJ3iY3BKzb2SEHuvK5",
+        "HJo9U3fx9JyqQ6ooUPGts5tve7mexaQ5uPsNaaop979t",
+        "7m1Q9V1646mzLEjh8iPoDQLR4LSWJBtmdQStdhF3TtVk"
       ]
     },
     {
-      "kind": "outsider pays an order that doesn't exist",
-      "attempts": 32,
-      "refused": 32,
-      "how": "failed",
-      "why": "unknown order",
-      "samples": [
-        "9Jcb27dgeLJx6HNZsAScBXdQgyZHMZsz5pC4m2jXCFNf",
-        "4615tt9qWAG2srd6iSmkqCMrdiTriMVDQCmVsEBt1aw9",
-        "GbjNDY5NeMECNCZScqj8vYdZ2hnX2tJqHbDwm7skMujJ"
-      ]
-    },
-    {
-      "kind": "outsider freezes the board",
-      "attempts": 19,
-      "refused": 19,
-      "how": "failed",
-      "why": "owner or council only",
-      "samples": [
-        "5fxZcTJiXn7LvjZ6iz6btkqXpnUy1sgeyiGjHeexrQY7",
-        "4dCJQFY5uEGak8RTvyoAAgEf5Xr7NMETJ8Krrzs6KoML",
-        "UCBVNja27uEFpx6PjBs4qGnVvkrGd59WsVyNhArj1tv"
-      ]
-    },
-    {
-      "kind": "outsider withdraws the shop's NEAR",
-      "attempts": 18,
-      "refused": 18,
+      "kind": "outsider redirects the split",
+      "attempts": 24,
+      "refused": 24,
+      "waiting": 0,
       "how": "failed",
       "why": "owner only",
       "samples": [
-        "EtmrqMGD4RRK9xLrRp1GQU6USQeKHYVssSMSbpLBm72V",
-        "48zQWcumC6XtEpiEnuMgSbwFopFR7BvLu7BHUXwg915c",
-        "72C3jDiEVbN4igfek6DU2GhTeb9DgW9Sr71Sgbdc67cR"
-      ]
-    },
-    {
-      "kind": "agent refunds more than the shop kept",
-      "attempts": 99,
-      "refused": 99,
-      "how": "event",
-      "why": "{\"reason\":{\"OverHeld\":{\"max\":\"5000000000000000000000\"}}}",
-      "samples": [
-        "2x4uKvwbwkKM1wFwc78mPnwDy46jnQPeVHe9MGAhTz76",
-        "8KG2EWkhENks1XNGEL7H6jHdS6R3749jRLoeogKfYew3",
-        "Ht6j4qLAMnhwe9BXLq1WffB7cZCjGCw3WZnnwqu9vh4S"
+        "CjBieYMcLr5d8AfXGDgyZTn1Sv75UUWYeTkNUcxKhpNK",
+        "8twSmtBxC6aSyQshXec5CewS3h1PZpVkSH6N93h82jvh",
+        "BsQzLyJt3HuoRhpu5CAfbcJbo5RbkEkLxbWRCJQCnY7L"
       ]
     },
     {
       "kind": "outsider approves a bounty payout",
-      "attempts": 29,
-      "refused": 29,
+      "attempts": 17,
+      "refused": 17,
+      "waiting": 0,
       "how": "failed",
       "why": "council only",
       "samples": [
-        "8MJro1NLSzKhq86dzdgi62LBusy2VhRXM6gNtnaSydjE",
-        "2Gct4TtHeA4rvXsgNcBMGTM16G4dyKFXMhzS8W2vExg2",
-        "E1QYox51hqGNeLvGRXQimWLwbkJER3KRua4k2g2NPtk4"
+        "5vtR2wtrCEL54uRkkapSzUXYRKDei3EEqWQswAnEqjMt",
+        "HG7QnfNvapj7PKGsgNcqJq7SQWC9ya2NALxe2Nb6PKfZ",
+        "8foXFP7GTC6qM77X1vXweckB12mzyVTAQ5ZtcNzAUP8i"
       ]
     },
     {
-      "kind": "agent pays someone off the allowlist",
-      "attempts": 93,
-      "refused": 93,
-      "how": "event",
-      "why": "{\"reason\":\"RecipientNotAllowed\"}",
+      "kind": "outsider freezes the board",
+      "attempts": 12,
+      "refused": 12,
+      "waiting": 0,
+      "how": "failed",
+      "why": "owner or council only",
       "samples": [
-        "2sG4xyyGmoC6d2R5WuEw8Zy7eGBHFDzsLDtpEMnRQSLd",
-        "9DJMBET3VeimUnmXhNXh5gycWWNqdFo2yhKRuRCPpLJ7",
-        "8HmEjjdTHAsKPahKWgoCe9C6uBAnWBwqHxNWNbezGXJT"
+        "3448wDyHyqagZiD15fnXUPnRonevHPhipiuxwXBx1vod",
+        "4MzVP5dkZCTsUSxAV8decdiHwPmGuwHCHiXbmYTHoNae",
+        "7sYs1tJDJ9YMUQu9cqiS2TEBS54sJp2gfhtQxMcEFcf4"
+      ]
+    },
+    {
+      "kind": "buyer pays less than the quote",
+      "attempts": 26,
+      "refused": 26,
+      "waiting": 0,
+      "how": "failed",
+      "why": "less than the price",
+      "samples": [
+        "3wisQCBArQ7SPrwayXoDXbuy9HCgB4j82B7wTjcAo33s",
+        "8bCDVB7nwH9BbUGQuhDZLi498hLHzFoR5DPytmxTg4Ph",
+        "G1HwYSuq5fEUeSQSvavwDvGHKrLtX9LLMWvUUJWi9ckB"
+      ]
+    },
+    {
+      "kind": "outsider pays an order that doesn't exist",
+      "attempts": 26,
+      "refused": 26,
+      "waiting": 0,
+      "how": "failed",
+      "why": "unknown order",
+      "samples": [
+        "5Ga2zsVxKxQe6ELqyotRBw7gkRRmvA2bjtQ6tQSU1Lf7",
+        "2JdyAzBhhfhfwQz2nVB9y14e9z3Voo83MUgt2tPEcqA6",
+        "9tfsoG9oUXYqCz2c9W4UFxtNy5JjbZFvYGVCMXiacbJj"
       ]
     },
     {
       "kind": "outsider delivers an order",
-      "attempts": 17,
-      "refused": 17,
+      "attempts": 15,
+      "refused": 15,
+      "waiting": 0,
       "how": "failed",
       "why": "agents call through their access key",
       "samples": [
-        "2mxPHBnCbeZnTvy7pvNmrvoKVAxkx3AJZrNmknjHutc3",
-        "6vAB3gFCUgrUspc8BbuaRBqKymicY7LZNfrm9if3bfiw",
-        "A9VLrU9T6GLPTMdxirq4HgYBTh5qp193b1GjFA9KmPT8"
+        "eCbJpCaZdiooV7LobLDTfM3dueSVy3WMYGT5PFozist",
+        "5FMWmtmzUC33FLdTj16k1bVjsimsHHw47NRC4FAezwUf",
+        "EfyBV7y1WgVUZa6PK66aKiaXLAP1i5qTz1ucxKWt1aga"
       ]
     },
     {
       "kind": "outsider posts a bounty",
-      "attempts": 21,
-      "refused": 21,
+      "attempts": 28,
+      "refused": 28,
+      "waiting": 0,
       "how": "failed",
       "why": "owner or council only",
       "samples": [
-        "5KGJGGnsPCBwpUzSzWb7rhzSSGz6YamJ6jxFgj3CWXqz",
-        "75gBquF1B1xcPhLQvrV2UgJBFjvVt8LpqCcmFz9xA6U1",
-        "55L3AP9Fsf94WSGoHoSZ4Mwieri439SwGdLDZeArxBCM"
+        "6xP8jNi57X781zHB6CN9tf9UhqzWMsDWoe9bmoaNxjnB",
+        "fZHyjsfhxXdpV6SGrioaGPzvCBPQazYsDJ7xN8ofABi",
+        "D2xTPMUYNAAPe1V3KAc3YgFHztTZsoSAitFMsfVKPbv8"
+      ]
+    },
+    {
+      "kind": "outsider withdraws the shop's NEAR",
+      "attempts": 23,
+      "refused": 23,
+      "waiting": 0,
+      "how": "failed",
+      "why": "owner only",
+      "samples": [
+        "42Nnhe92LTA3XabuEqGkYBzTp822XgtqmQSb25gquKQw",
+        "D3ejWnb5tHDdnd2A6CC4DqwnJVqQz69kg1NhWspqhxeU",
+        "3kK6z2Rd5z47Yhc7hbarAU7xHJ6emkRGjppgNT1c5fjq"
       ]
     }
   ]
