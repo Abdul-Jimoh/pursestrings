@@ -1,5 +1,9 @@
 # Deploy from the repo root: fly deploy . --config apps/range/fly.toml --ha=false
 # Secrets (never in this file): fly secrets set RANGE_AGENT_KEY=... RANGE_MODEL_KEY=... SHOP_AGENT_KEY=...
+# Optional secrets: PROVER_ACCOUNT / PROVER_KEY (a funded account that proves Base payments and
+# sweeps expired quotes), TRY_BUYER_ACCOUNT / TRY_BUYER_KEY (the demo buyer for "try it without a
+# wallet": a full-access key, since paying attaches a deposit; keep only a few testnet NEAR there).
+# SHOP_TRY_PER_DAY caps demo checks (default 20; a value that isn't a number allows none).
 app = "pursestrings-range"
 primary_region = "iad"
 

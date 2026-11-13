@@ -163,6 +163,11 @@ if (shopAccount) {
           : {}),
       })
     : undefined;
+  // Anyone may free expired quotes' slots; the prover's account pays the gas for it too.
+  const sweeper =
+    process.env.PROVER_ACCOUNT && process.env.PROVER_KEY
+      ? shop.caller(process.env.PROVER_ACCOUNT, process.env.PROVER_KEY)
+      : undefined;
   const { route, tick } = shopRoutes({
     shop,
     agent: shopAgent,
@@ -174,6 +179,7 @@ if (shopAccount) {
     ),
     sources: checkSources,
     ...(board ? { board } : {}),
+    ...(sweeper ? { sweeper } : {}),
     // "Try it without a wallet": a demo buyer this server holds, capped per day.
     ...(process.env.TRY_BUYER_ACCOUNT && process.env.TRY_BUYER_KEY
       ? {

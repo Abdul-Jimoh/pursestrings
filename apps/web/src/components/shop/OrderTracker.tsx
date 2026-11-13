@@ -141,7 +141,13 @@ export function OrderTracker({
         )}
       </ol>
 
-      {late && (
+      {late && loadSession()?.account !== order.payer && (
+        <p className="mt-8 border border-wait/60 p-5 leading-relaxed">
+          The agent missed its delivery window, so the buyer can take the {near(order.held)} back
+          themselves.
+        </p>
+      )}
+      {late && loadSession()?.account === order.payer && (
         <div className="mt-8 border border-wait/60 p-5">
           <p className="leading-relaxed">
             The agent missed its delivery window. Take your {near(order.held)} back: only you can,

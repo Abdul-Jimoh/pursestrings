@@ -11,7 +11,8 @@ export class Trials {
   private readonly gapMs: number;
   private readonly now: () => number;
   constructor(perDay: number, gapMs = 20_000, now: () => number = Date.now) {
-    this.perDay = perDay;
+    // Fails closed: a setting that isn't a number allows no tries rather than unlimited ones.
+    this.perDay = Number.isFinite(perDay) && perDay > 0 ? Math.floor(perDay) : 0;
     this.gapMs = gapMs;
     this.now = now;
   }
@@ -24,8 +25,11 @@ export class Trials {
     return Math.max(0, this.perDay - (this.used.get(this.day()) ?? 0));
   }
 
-  /** Takes a slot, or says why not. Call `done` when the try has finished, however it ended. */
-  start(): { ok: true; done: () => void } | { ok: false; reason: string } {
+  /**
+   * Takes a slot, or says why not. Call `done` when the try has finished, however it ended, and
+   * `unused` first if it spent nothing, so it doesn't count against the day.
+   */
+  start(): { ok: true; done: () => void; unused: () => void } | { ok: false; reason: string } {
     if (this.left() === 0)
       return { ok: false, reason: "today's demo checks are used up: come back after midnight UTC" };
     if (this.busy) return { ok: false, reason: "a demo check is running: try again in a minute" };
@@ -39,6 +43,9 @@ export class Trials {
       ok: true,
       done: () => {
         this.busy = false;
+      },
+      unused: () => {
+        this.used.set(day, Math.max(0, (this.used.get(day) ?? 1) - 1));
       },
     };
   }

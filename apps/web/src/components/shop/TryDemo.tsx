@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { near, shop, validTarget } from "@/lib/shop";
 
 const examples = [
@@ -20,12 +20,17 @@ export function TryDemo({ onStarted }: { onStarted: (orderId: number, payTx: str
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(
+    () =>
+      shop.tryStatus().then((s) => {
+        setLeft(s?.price ? s.left : null);
+        setPrice(s?.price ?? null);
+      }),
+    [],
+  );
   useEffect(() => {
-    shop.tryStatus().then((s) => {
-      setLeft(s?.price ? s.left : null);
-      setPrice(s?.price ?? null);
-    });
-  }, []);
+    load();
+  }, [load]);
 
   if (left === null || price === null) return null;
 
@@ -40,6 +45,7 @@ export function TryDemo({ onStarted }: { onStarted: (orderId: number, payTx: str
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
+      load();
     }
   }
 

@@ -133,6 +133,60 @@ describe("demo checks without a wallet", () => {
     expect(await first).toMatchObject({ status: 502, data: { orderId: 7 } });
   });
 
+  it("fails closed on a cap that isn't a number", () => {
+    const trials = new Trials(Number("abc"));
+    expect(trials.left()).toBe(0);
+    expect(trials.start().ok).toBe(false);
+  });
+
+  it("counts only tries that spend, and frees the slot when each ends", async () => {
+    const ok = setup();
+    expect(await ok.call("POST", "/try", { target: "not an address!" })).toMatchObject({
+      status: 400,
+    });
+    expect((await ok.call("GET", "/try"))?.data).toMatchObject({ left: 20 });
+    expect(await ok.call("POST", "/try", { target: "x.testnet" })).toMatchObject({ status: 200 });
+    expect(await ok.call("POST", "/try", { target: "y.testnet" })).toMatchObject({ status: 200 });
+    expect((await ok.call("GET", "/try"))?.data).toMatchObject({ left: 18 });
+
+    const frozen = setup({ frozen: true });
+    expect(await frozen.call("POST", "/try", { target: "x.testnet" })).toMatchObject({
+      status: 503,
+    });
+    expect((await frozen.call("GET", "/try"))?.data).toMatchObject({ left: 20, price: null });
+
+    const denied = setup({ denied: true });
+    expect(await denied.call("POST", "/try", { target: "x.testnet" })).toMatchObject({
+      status: 502,
+    });
+    expect((await denied.call("GET", "/try"))?.data).toMatchObject({ left: 20 });
+  });
+
+  it("sweeps expired quotes every ten minutes, and only those", async () => {
+    const orders: [number, Order][] = [
+      [5, order({ status: "Quoted", payer: null, expires_at: 100 })],
+      [6, order({ status: "Quoted", payer: null, expires_at: 9_999_999_999 })],
+      [7, order({ status: "Delivered" })],
+    ];
+    const swept: unknown[] = [];
+    const { tick } = shopRoutes({
+      shop: {
+        view: async () => 8,
+        recentOrders: async () => orders,
+      },
+      reports: { get: () => undefined },
+      sweeper: {
+        call: async (method: string, args: unknown) => {
+          swept.push([method, args]);
+          return { ok: true, txHash: "S" };
+        },
+      },
+    } as unknown as Parameters<typeof shopRoutes>[0]);
+    await tick();
+    await tick();
+    expect(swept).toEqual([["expire_quotes", { order_ids: [5] }]]);
+  });
+
   it("isn't served when no demo buyer is configured", async () => {
     const route = shopRoutes({ shop: {}, reports: {} } as unknown as Parameters<
       typeof shopRoutes

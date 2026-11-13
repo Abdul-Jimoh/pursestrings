@@ -38,7 +38,14 @@ export interface ShopDeps extends Omit<Deliverer, "log"> {
   record(account: string, usage: { input: number; output: number }): void;
   /** "Try it without a wallet": a demo buyer the server holds. Without it the route isn't served. */
   trial?: { buyer: Caller; account: string; trials: Trials };
+  /**
+   * Frees the slots of quotes nobody paid: an expired quote holds one of the shop's 64 until
+   * someone calls `expire_quotes`, which anyone may. Without it, expired quotes pile up.
+   */
+  sweeper?: Caller;
 }
+
+const SWEEP_MS = 10 * 60_000;
 
 const MAX_TURNS = 12;
 // Chat-triggered contract calls burn the agent key's gas allowance, which deliveries and cost
@@ -130,8 +137,22 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
     );
     return allowances.length ? allowances.reduce((a, b) => (a < b ? a : b)).toString() : null;
   });
+  let swept = 0;
+  const sweep = async () => {
+    if (!d.sweeper || Date.now() - swept < SWEEP_MS) return;
+    swept = Date.now();
+    const nowS = Date.now() / 1000;
+    const ids = (await allOrders(d.shop))
+      .filter(([, o]) => o.status === "Quoted" && o.expires_at <= nowS)
+      .map(([id]) => id)
+      .slice(0, 50);
+    if (!ids.length) return;
+    const r = await d.sweeper.call("expire_quotes", { order_ids: ids }, { tgas: 100n });
+    console.log(`swept ${ids.length} expired quotes: ${r.ok ? r.txHash : r.error}`);
+  };
   const tick = () =>
     one(async () => {
+      await sweep().catch((e) => console.error("sweep:", e));
       const delivered = await deliverPaid(d);
       const paid = await d.costs?.settle().catch(() => undefined);
       if (paid)
@@ -203,6 +224,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
           const p = await policy();
           const floor = p.floors.find((f) => f.asset === "Near")?.min;
           if (!floor || p.frozen) {
+            slot.unused();
             return { status: 503, data: { error: "the shop isn't selling right now" } };
           }
           // At the floor, the cheapest the contract allows: no haggling and no model call.
@@ -210,6 +232,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
             d.agent.quote(t.account, "Near", BigInt(floor), `check:${addr}`),
           );
           if (!quote.value || !("Quoted" in quote.value)) {
+            slot.unused();
             return { status: 502, data: { error: "the shop couldn't quote it", tx: quote.txHash } };
           }
           const orderId = quote.value.Quoted.order_id;
