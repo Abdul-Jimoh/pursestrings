@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 CONTRACTS := pursestrings factory
 
-.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo demo-keep redteam verify
+.PHONY: all build test test-unit test-sandbox test-ts lint fmt demo demo-keep redteam verify check-live
 
 all: lint test
 
@@ -32,6 +32,11 @@ lint:
 fmt:
 	cargo fmt --all
 	pnpm format
+
+# Read-only, no keys: every transaction and account the docs link exists, and the live accounts
+# have no full-access key and run the code the README names.
+check-live:
+	@node scripts/check-live.mjs
 
 demo:
 	@scripts/with-devnet.sh demo

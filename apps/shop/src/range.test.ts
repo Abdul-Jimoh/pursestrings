@@ -272,7 +272,7 @@ describe("the desk's record of the contract", () => {
   it("stops calling the contract once the buyer's daily calls are used up", async () => {
     const { a, calls } = quoter();
     const seen: Message[][] = [];
-    const turn = await sellerTurn(
+    await sellerTurn(
       quoting("0.09", seen),
       a,
       "bob.testnet",

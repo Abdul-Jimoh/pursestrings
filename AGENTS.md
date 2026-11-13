@@ -10,9 +10,12 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
    recording of `make demo` ending `demo OK: 37/37 checks passed`.
 2. `make demo` (also needs cargo-near 0.22). The same story live on a local chain, about 2 minutes
    once built. CI runs it on every push (the `demo` job in `.github/workflows/ci.yml`).
-3. On testnet, read-only and without an account:
-   `near contract call-function as-read-only shop.factory.ps-spike-1028.testnet recent_orders json-args '{"limit":10}' network-config testnet now`,
-   or open the transactions in the README's "Verify it on testnet" table.
+3. `make check-live` (Node 22+ only, about 20 seconds, read-only, no account). It looks up every
+   NEAR testnet and Base Sepolia transaction and account the README, THREAT_MODEL.md and this file
+   link, and checks that the live shop, board, Range and factory accounts have no full-access key
+   and that the shop and board run the code the README names. Expect every line `ok` and
+   `every linked claim checks out`. For more, read the shop directly:
+   `near contract call-function as-read-only shop.factory.ps-spike-1028.testnet recent_orders json-args '{"limit":10}' network-config testnet now`.
 
 ## Layout
 
@@ -38,6 +41,7 @@ make verify      # no chain or cargo-near: each claim beside its passing test, t
 make test       # contract unit tests, sandbox tests, TypeScript typecheck and tests
 make demo       # local chain + the scripted demo agent; ends with "demo OK: 37/37 checks passed"
 make redteam    # six attacks; output must match scripts/redteam/expected.txt
+make check-live # read-only: every linked testnet transaction and account exists; live accounts keyless
 make lint       # rustfmt, clippy -D warnings, Biome
 ```
 

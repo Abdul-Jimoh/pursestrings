@@ -47,6 +47,22 @@ flowchart LR
     bc -- "paid reports =<br/>scam list" --> shop
 ```
 
+## What's live, and what isn't
+
+| Part | Where | State |
+|---|---|---|
+| Shop contract | [`shop.factory.ps-spike-1028.testnet`](https://testnet.nearblocks.io/address/shop.factory.ps-spike-1028.testnet) | Live on testnet, no access keys, code `FVksmpMe…` (the build of Nov 12) |
+| Bounty board contract | [`board.factory.ps-spike-1028.testnet`](https://testnet.nearblocks.io/address/board.factory.ps-spike-1028.testnet) | Live on testnet, no access keys, same code; owned by the DAO below |
+| Community DAO | [`ps-community-1107.testnet`](https://testnet.nearblocks.io/address/ps-community-1107.testnet) | Sputnik DAO v3.2 on testnet; it voted the board's last upgrade in |
+| ProcureBot's account (the Range) | [`range.factory.ps-spike-1028.testnet`](https://testnet.nearblocks.io/address/range.factory.ps-spike-1028.testnet) | Live on testnet on the build of Nov 2 (see Limitations) |
+| Factory | [`factory.ps-spike-1028.testnet`](https://testnet.nearblocks.io/address/factory.ps-spike-1028.testnet) | Live on testnet, no access keys; publishes the code hashes accounts may move to |
+| The agents, relayer and prover | One container on Fly behind [api.pursestrings.site](https://api.pursestrings.site/api/shop/status) | Live: the shop agent, the bounty agent, ProcureBot, the Base relayer and the payment prover |
+| Payments on Base | The shop's address on Base Sepolia, [`0xce05…fe4f`](https://sepolia.basescan.org/address/0xce0516586281dad3ec0888527e1fde06aa07fe4f) | Live: the shop pays its model bill in USDC there, signed through Chain Signatures and proven back on NEAR |
+| The site | [pursestrings.site](https://pursestrings.site) on Vercel | Live |
+| NEAR Intents swaps | The contract and its sandbox tests | Tests only, against the real mainnet `intents.near` code: Intents has no testnet |
+| A risk screener (invariant 5) | | Not built |
+| Mainnet | | Not deployed. The shop's checks read mainnet accounts and addresses, and do nothing else there |
+
 ## Try it
 
 **Anywhere, no chain:** `make verify` needs only `cargo` (and Node 22+ with pnpm 10 for the
@@ -55,6 +71,10 @@ that proves it, runs the TypeScript tests, then replays a recording of `make dem
 ([scripts/verify.sh](scripts/verify.sh), [the recording](scripts/verify/demo-transcript.txt)). The
 first run spends about 5 to 7 minutes compiling (it prints progress); after that it takes under a
 minute.
+
+**The live claims, read-only:** `make check-live` needs only Node 22+ and takes about 20 seconds.
+It looks up every testnet transaction and account these docs link, and checks the live accounts
+have no full-access key and run the code named above ([check-live.mjs](scripts/check-live.mjs)).
 
 **The whole story on a local chain, from a fresh clone, no keys or accounts:** you need `cargo` (rustup reads
 [rust-toolchain.toml](rust-toolchain.toml)), [cargo-near](https://github.com/near/cargo-near) 0.22
@@ -236,6 +256,10 @@ published. The seven security invariants, where each is enforced and the test fo
 [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Verify it on testnet
+
+`make check-live` looks up every transaction and account linked here, in THREAT_MODEL.md and in
+AGENTS.md, and checks that the live accounts have no full-access key and run the code named above
+([check-live.mjs](scripts/check-live.mjs); read-only, no account, Node 22+).
 
 | Claim | Transaction |
 |---|---|
