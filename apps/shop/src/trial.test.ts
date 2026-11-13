@@ -86,8 +86,15 @@ describe("demo checks without a wallet", () => {
       path: string,
       body: Record<string, unknown> = {},
       account?: string,
+      visitor?: string,
     ) =>
-      route({ method, url: new URL(`http://x/api/shop${path}`), account, body: async () => body });
+      route({
+        method,
+        url: new URL(`http://x/api/shop${path}`),
+        account,
+        ...(visitor ? { visitor } : {}),
+        body: async () => body,
+      });
     return { call, calls, release: () => release() };
   }
 
@@ -131,6 +138,63 @@ describe("demo checks without a wallet", () => {
     expect(await slow.call("POST", "/try", { target: "y.testnet" })).toMatchObject({ status: 429 });
     slow.release();
     expect(await first).toMatchObject({ status: 502, data: { orderId: 7 } });
+  });
+
+  it("gives each visitor three a day, apart from the daily cap", async () => {
+    const trials = new Trials(20, 0, () => 0);
+    for (let i = 0; i < 3; i++) {
+      const s = trials.start("1.2.3.4");
+      expect(s.ok).toBe(true);
+      if (s.ok) s.done();
+    }
+    expect(trials.start("1.2.3.4")).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/today's 3/),
+    });
+    expect(trials.start("5.6.7.8").ok).toBe(true);
+
+    const { call } = setup();
+    for (let i = 0; i < 3; i++) {
+      expect(
+        await call("POST", "/try", { target: "x.testnet" }, undefined, "9.9.9.9"),
+      ).toMatchObject({ status: 200 });
+    }
+    expect(await call("POST", "/try", { target: "x.testnet" }, undefined, "9.9.9.9")).toMatchObject(
+      { status: 429 },
+    );
+    expect(await call("POST", "/try", { target: "x.testnet" }, undefined, "8.8.8.8")).toMatchObject(
+      { status: 200 },
+    );
+  });
+
+  it("takes back a demo payment the agent never delivered, and nothing else", async () => {
+    const orders: [number, Order][] = [
+      [1, order({ status: "Paid", payer: "demo.testnet", deliver_by: 100, item: "held" })],
+      [2, order({ status: "Paid", payer: "bob.testnet", deliver_by: 100, item: "held" })],
+      [
+        3,
+        order({ status: "Paid", payer: "demo.testnet", deliver_by: 9_999_999_999, item: "held" }),
+      ],
+      [4, order({ status: "Delivered", payer: "demo.testnet", deliver_by: 100 })],
+    ];
+    const reclaimed: number[] = [];
+    const { tick } = shopRoutes({
+      shop: { view: async () => 5, recentOrders: async () => orders },
+      reports: { get: () => undefined, save: () => {} },
+      agent: { deliver: async () => ({ ok: true, txHash: "D" }) },
+      trial: {
+        account: "demo.testnet",
+        buyer: {
+          reclaim: async (id: number) => {
+            reclaimed.push(id);
+            return { ok: true, txHash: "R" };
+          },
+        },
+        trials: new Trials(20, 0),
+      },
+    } as unknown as Parameters<typeof shopRoutes>[0]);
+    await tick();
+    expect(reclaimed).toEqual([1]);
   });
 
   it("fails closed on a cap that isn't a number", () => {

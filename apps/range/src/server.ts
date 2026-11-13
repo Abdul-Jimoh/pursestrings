@@ -190,6 +190,8 @@ export function rangeServer(d: RangeDeps) {
           method: req.method ?? "GET",
           url,
           account: signedIn && signedIn.until >= now() ? signedIn.account : undefined,
+          // Fly's proxy sets this header itself; off Fly, the socket's address.
+          visitor: String(req.headers["fly-client-ip"] ?? req.socket.remoteAddress ?? ""),
           body: () => body(req),
         });
         if (out) return send(res, out.status, out.data);

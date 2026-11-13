@@ -13,8 +13,9 @@ A map of the code and how to check what the README and THREAT_MODEL.md say.
 3. `make check-live` (Node 22+ only, about 20 seconds, read-only, no account). It looks up every
    NEAR testnet and Base Sepolia transaction and account the README, THREAT_MODEL.md and this file
    link, and checks that the live shop, board, Range and factory accounts have no full-access key
-   and that the shop and board run the code the README names. Expect every line `ok` and
-   `every linked claim checks out`. For more, read the shop directly:
+   and that the shop and board run the code the README names. It doesn't check what each transaction shows;
+   the README's table says that, and each link opens it in the explorer. Expect every line `ok` and
+   `every linked transaction and account exists, and the live accounts match the README`. For more, read the shop directly:
    `near contract call-function as-read-only shop.factory.ps-spike-1028.testnet recent_orders json-args '{"limit":10}' network-config testnet now`.
 
 ## Layout

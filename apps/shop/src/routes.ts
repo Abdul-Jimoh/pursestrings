@@ -19,6 +19,8 @@ export interface Call {
   method: string;
   url: URL;
   account: string | undefined;
+  /** Who's calling, for per-visitor limits: the client IP Fly's proxy reports. */
+  visitor?: string;
   body: () => Promise<Record<string, unknown>>;
 }
 
@@ -139,16 +141,32 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
   });
   let swept = 0;
   const sweep = async () => {
-    if (!d.sweeper || Date.now() - swept < SWEEP_MS) return;
+    if ((!d.sweeper && !d.trial) || Date.now() - swept < SWEEP_MS) return;
     swept = Date.now();
     const nowS = Date.now() / 1000;
-    const ids = (await allOrders(d.shop))
+    const orders = await allOrders(d.shop);
+    const ids = orders
       .filter(([, o]) => o.status === "Quoted" && o.expires_at <= nowS)
       .map(([id]) => id)
       .slice(0, 50);
-    if (!ids.length) return;
-    const r = await d.sweeper.call("expire_quotes", { order_ids: ids }, { tgas: 100n });
-    console.log(`swept ${ids.length} expired quotes: ${r.ok ? r.txHash : r.error}`);
+    if (d.sweeper && ids.length) {
+      const r = await d.sweeper.call("expire_quotes", { order_ids: ids }, { tgas: 100n });
+      console.log(`swept ${ids.length} expired quotes: ${r.ok ? r.txHash : r.error}`);
+    }
+    // A demo payment the agent never delivered goes back to the demo buyer, who alone may take it.
+    const trial = d.trial;
+    if (!trial) return;
+    const late = orders.filter(
+      ([, o]) =>
+        o.status === "Paid" &&
+        o.payer === trial.account &&
+        o.deliver_by !== null &&
+        o.deliver_by <= nowS,
+    );
+    for (const [id] of late.slice(0, 10)) {
+      const r = await trial.buyer.reclaim(id);
+      console.log(`reclaimed undelivered demo order ${id}: ${r.ok ? r.txHash : r.error}`);
+    }
   };
   const tick = () =>
     one(async () => {
@@ -162,7 +180,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
       return delivered;
     });
 
-  const route: Route = async ({ method, url, account, body }) => {
+  const route: Route = async ({ method, url, account, visitor, body }) => {
     if (!url.pathname.startsWith("/api/shop/")) return undefined;
     const path = url.pathname.slice("/api/shop".length);
 
@@ -218,7 +236,7 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
         if (!chainOf(addr)) {
           return { status: 400, data: { error: "a NEAR account or a 0x address to check" } };
         }
-        const slot = t.trials.start();
+        const slot = t.trials.start(visitor);
         if (!slot.ok) return { status: 429, data: { error: slot.reason } };
         try {
           const p = await policy();
