@@ -21,6 +21,7 @@ import { Bubble, ChatLog } from "../ChatLog";
 import { Stats } from "../Stats";
 import { OrderTracker } from "./OrderTracker";
 import { Split } from "./Split";
+import { TryDemo } from "./TryDemo";
 
 const examples = [
   { target: "ps-cornmunity-1107.testnet", note: "a lookalike" },
@@ -240,6 +241,15 @@ export function ShopApp() {
               </button>
               {offline && (
                 <p className="mt-4 text-paper/60">The shop is offline right now. Try later.</p>
+              )}
+              {!offline && (
+                <TryDemo
+                  onStarted={(id, tx) => {
+                    setPayTx(tx);
+                    setOrderId(id);
+                    sessionStorage.setItem(ORDER_KEY, String(id));
+                  }}
+                />
               )}
             </>
           ) : (

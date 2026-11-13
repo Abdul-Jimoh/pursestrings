@@ -167,6 +167,18 @@ export const shop = {
       deliverTx: string | null;
     }>(`/api/shop/order?id=${id}`, token ? { headers: { authorization: `Bearer ${token}` } } : {}),
   ledger: () => call<{ orders: LedgerOrder[]; costs: Cost[] }>("/api/shop/ledger"),
+  /** How many demo checks are left today, or null when the server doesn't offer them. */
+  tryStatus: () =>
+    call<{ account: string; left: number; price: string | null }>("/api/shop/try").catch(
+      () => null,
+    ),
+  /** Buys a check at the floor from the server's demo account; the order's report is public. */
+  tryCheck: (target: string) =>
+    call<{ orderId: number; price: string; quoteTx: string; payTx: string }>("/api/shop/try", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ target }),
+    }),
   chat: (token: string, target: string, history: ChatTurn[], range = false) =>
     call<Turn>(range ? "/api/shop/range/chat" : "/api/shop/chat", {
       method: "POST",

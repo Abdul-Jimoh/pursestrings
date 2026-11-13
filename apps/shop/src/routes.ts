@@ -1,5 +1,6 @@
 import {
   type Agent,
+  type Caller,
   describeQuote,
   describeRefund,
   type Order,
@@ -11,6 +12,7 @@ import type { Costs } from "./costs.ts";
 import { type Deliverer, deliverPaid, type Reports } from "./deliver.ts";
 import { type Attempts, allOrders, scoreboard } from "./range.ts";
 import { type Chat, fromYocto, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
+import type { Trials } from "./trial.ts";
 
 /** What a route sees of an API request; `account` is the signed-in NEAR account, if any. */
 export interface Call {
@@ -34,6 +36,8 @@ export interface ShopDeps extends Omit<Deliverer, "log"> {
   /** Per-account and daily LLM limits, shared with the Range. */
   allow(account: string): { ok: true } | { ok: false; reason: string };
   record(account: string, usage: { input: number; output: number }): void;
+  /** "Try it without a wallet": a demo buyer the server holds. Without it the route isn't served. */
+  trial?: { buyer: Caller; account: string; trials: Trials };
 }
 
 const MAX_TURNS = 12;
@@ -167,7 +171,9 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
         data: await (async () => {
           const order = await d.shop.order(id);
           const report = d.reports.get(id);
-          const theirs = account !== undefined && order?.payer === account;
+          // A demo order was paid by the server's own buyer, so anyone may read its report.
+          const theirs =
+            order?.payer != null && (order.payer === account || order.payer === d.trial?.account);
           return {
             order,
             report: theirs ? (report ?? null) : null,
@@ -176,6 +182,49 @@ export function shopRoutes(d: ShopDeps): { route: Route; tick: () => Promise<num
           };
         })(),
       };
+    }
+
+    if (path === "/try" && d.trial) {
+      const t = d.trial;
+      if (method === "GET") {
+        const p = await policy();
+        const price = p.frozen ? null : (p.floors.find((f) => f.asset === "Near")?.min ?? null);
+        return { status: 200, data: { account: t.account, left: t.trials.left(), price } };
+      }
+      if (method === "POST") {
+        const { target } = await body();
+        const addr = typeof target === "string" ? target.trim() : "";
+        if (!chainOf(addr)) {
+          return { status: 400, data: { error: "a NEAR account or a 0x address to check" } };
+        }
+        const slot = t.trials.start();
+        if (!slot.ok) return { status: 429, data: { error: slot.reason } };
+        try {
+          const p = await policy();
+          const floor = p.floors.find((f) => f.asset === "Near")?.min;
+          if (!floor || p.frozen) {
+            return { status: 503, data: { error: "the shop isn't selling right now" } };
+          }
+          // At the floor, the cheapest the contract allows: no haggling and no model call.
+          const quote = await one(() =>
+            d.agent.quote(t.account, "Near", BigInt(floor), `check:${addr}`),
+          );
+          if (!quote.value || !("Quoted" in quote.value)) {
+            return { status: 502, data: { error: "the shop couldn't quote it", tx: quote.txHash } };
+          }
+          const orderId = quote.value.Quoted.order_id;
+          const paid = await t.buyer.payNear(orderId, BigInt(floor));
+          if (!paid.ok) {
+            return { status: 502, data: { error: "the demo payment didn't go through", orderId } };
+          }
+          return {
+            status: 200,
+            data: { orderId, price: floor, quoteTx: quote.txHash, payTx: paid.txHash },
+          };
+        } finally {
+          slot.done();
+        }
+      }
     }
 
     if (method === "GET" && path === "/ledger") {

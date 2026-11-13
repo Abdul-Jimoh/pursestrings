@@ -12,3 +12,4 @@ export { deliverPaid, type Report, Reports, scamListFrom } from "./deliver.ts";
 export { type Attempt, Attempts, paidOn, scoreboard } from "./range.ts";
 export { type Call, type Route, type ShopDeps, shopRoutes } from "./routes.ts";
 export { type Chat, LIST_PRICE_NEAR, sellerTurn } from "./seller.ts";
+export { Trials } from "./trial.ts";

@@ -14,6 +14,7 @@ import {
   Reviews,
   type Route,
   shopRoutes,
+  Trials,
 } from "@pursestrings/shop";
 import { JsonRpcProvider } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
@@ -173,6 +174,16 @@ if (shopAccount) {
     ),
     sources: checkSources,
     ...(board ? { board } : {}),
+    // "Try it without a wallet": a demo buyer this server holds, capped per day.
+    ...(process.env.TRY_BUYER_ACCOUNT && process.env.TRY_BUYER_KEY
+      ? {
+          trial: {
+            account: process.env.TRY_BUYER_ACCOUNT,
+            buyer: shop.caller(process.env.TRY_BUYER_ACCOUNT, process.env.TRY_BUYER_KEY),
+            trials: new Trials(Number(env("SHOP_TRY_PER_DAY", "20"))),
+          },
+        }
+      : {}),
     // A chat message is much smaller than a Range attempt, so chats get their own hourly limit;
     // the daily model budget is still shared.
     allow: (account) =>
