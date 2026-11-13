@@ -1,7 +1,9 @@
 /**
  * Limits for "try it without a wallet": a demo buyer the server holds buys a check at the floor
  * price, so visitors with no testnet wallet can watch a real sale. Every try spends the demo
- * account's NEAR, so they're capped per UTC day, run one at a time and a little apart.
+ * account's NEAR, so they're capped per UTC day, run one at a time and a little apart. The count
+ * lives in memory, so a restart starts the day again: deploys are ours, and only testnet NEAR is
+ * at stake.
  */
 export class Trials {
   private used = new Map<string, number>();

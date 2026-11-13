@@ -162,6 +162,56 @@ describe("demo checks without a wallet", () => {
     expect((await denied.call("GET", "/try"))?.data).toMatchObject({ left: 20 });
   });
 
+  it("still counts a try whose payment failed after the quote", async () => {
+    const failed = setup({ payFails: true });
+    const run = failed.call("POST", "/try", { target: "x.testnet" });
+    await new Promise((r) => setTimeout(r, 10));
+    failed.release();
+    expect(await run).toMatchObject({ status: 502 });
+    expect((await failed.call("GET", "/try"))?.data).toMatchObject({ left: 19 });
+  });
+
+  it("delivers even when the sweep fails, and sweeps at most 50 at a time", async () => {
+    const expired: [number, Order][] = Array.from({ length: 60 }, (_, i) => [
+      i,
+      order({ status: "Quoted", payer: null, expires_at: 100 }),
+    ]);
+    const paid: [number, Order] = [
+      99,
+      order({ status: "Paid", item: "check:x.testnet", payer: "bob.testnet" }),
+    ];
+    const swept: number[][] = [];
+    const delivered: number[] = [];
+    const routes = (sweeper: unknown) =>
+      shopRoutes({
+        shop: { view: async () => 100, recentOrders: async () => [...expired, paid] },
+        reports: {
+          get: () => ({ verdict: { level: "looks fine", reasons: [] }, text: "r" }),
+          save: () => {},
+        },
+        agent: {
+          deliver: async (id: number) => {
+            delivered.push(id);
+            return { ok: true, txHash: "D" };
+          },
+        },
+        sweeper,
+      } as unknown as Parameters<typeof shopRoutes>[0]);
+    await routes({
+      call: async (_: string, args: { order_ids: number[] }) => {
+        swept.push(args.order_ids);
+        return { ok: true, txHash: "S" };
+      },
+    }).tick();
+    expect(swept[0]).toHaveLength(50);
+    await routes({
+      call: async () => {
+        throw new Error("rpc down");
+      },
+    }).tick();
+    expect(delivered).toContain(99);
+  });
+
   it("sweeps expired quotes every ten minutes, and only those", async () => {
     const orders: [number, Order][] = [
       [5, order({ status: "Quoted", payer: null, expires_at: 100 })],

@@ -45,7 +45,10 @@ export function TryDemo({ onStarted }: { onStarted: (orderId: number, payTx: str
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
-      load();
+      // Only the count: if the shop has just stopped selling, hiding the panel would hide why.
+      shop.tryStatus().then((s) => {
+        if (s?.price) setLeft(s.left);
+      });
     }
   }
 
